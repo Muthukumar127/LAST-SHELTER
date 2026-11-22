@@ -14,7 +14,7 @@ canvas{display:block}
 button,input{font:700 20px Fredoka,sans-serif;border:4px solid var(--ink);border-radius:16px;padding:10px 20px;color:var(--ink)}
 button{background:var(--teal);color:#fff;box-shadow:0 5px 0 var(--ink);cursor:pointer}button:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink)}
 button.alt{background:var(--red)}input{background:#fff;text-align:center;width:190px;text-transform:uppercase}
-#name{text-transform:none}
+#name,#uname{text-transform:none}input{-webkit-user-select:text;user-select:text}#crash{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(transparent 20%,#ff2a00bb);opacity:0}
 #slots{display:grid;grid-template-columns:repeat(2,150px);gap:10px}
 .slot{border:4px solid var(--ink);border-radius:16px;background:#fff8;padding:10px;font-weight:700;min-height:48px}
 #hud{position:fixed;top:8px;left:8px;right:8px;z-index:3;display:none;pointer-events:none;font-weight:700;text-shadow:0 2px 0 #fff8}
@@ -27,14 +27,18 @@ button.alt{background:var(--red)}input{background:#fff;text-align:center;width:1
 #joy{position:absolute;left:24px;bottom:24px;width:130px;height:130px;border-radius:50%;background:#fff6;border:4px solid var(--ink);pointer-events:auto}
 #knob{position:absolute;left:35px;top:35px;width:60px;height:60px;border-radius:50%;background:var(--red);border:4px solid var(--ink)}
 </style></head><body>
-<div id="storm"></div><div id="hud"></div><div id="msg"></div><div id="prompt"></div>
+<div id="storm"></div><div id="crash"></div><div id="hud"></div><div id="msg"></div><div id="prompt"></div>
 <div id="mob"><div id="joy"><div id="knob"></div></div>
 <button id="bAct" style="right:24px;bottom:110px">Use</button><button id="bRun" class="alt" style="right:100px;bottom:40px">Run</button>
 <button id="bDrop" class="alt" style="right:100px;bottom:110px">Drop</button><button id="bJump" style="right:24px;bottom:30px">Jump</button></div>
 
-<div class="panel" id="menu"><h1>LAST SHELTER</h1>
+<div class="panel" id="login"><h1>LAST SHELTER</h1>
+<p style="margin:0;font-weight:700">Create your username to enter the game</p>
+<input id="uname" placeholder="Username" maxlength="12" autocomplete="off">
+<button id="enter">Enter game</button><div id="lerr" style="color:#a01212;min-height:24px"></div></div>
+<div class="panel" id="menu" style="display:none"><h1>LAST SHELTER</h1>
 <p style="margin:0;font-weight:700">A sandstorm is coming. Fix the truck. Escape together.</p>
-<input id="name" placeholder="Your name" maxlength="12">
+<div style="font-weight:700">Playing as <b id="me"></b> <button class="alt" id="chg" style="font-size:14px;padding:4px 12px;box-shadow:0 3px 0 var(--ink)">change</button></div>
 <button id="create">Create room</button>
 <div><input id="code" placeholder="CODE" maxlength="6"> <button id="join" class="alt">Join room</button></div>
 <div id="err" style="color:#a01212;min-height:24px"></div></div>
@@ -55,10 +59,18 @@ let myId, host, phase = 'menu', G = null;
 const keys = {}; let joy = { x: 0, y: 0 }, yaw = 0, pitch = 0, run = false;
 
 // ---------- lobby ----------
-$('create').onclick = () => socket.emit('create', $('name').value);
-$('join').onclick = () => socket.emit('join', $('code').value, $('name').value);
+// username: create it first, then you can create / join rooms
+let myName = '';
+try { $('uname').value = localStorage.getItem('ls_name') || ''; } catch (e) {}
+function enterGame() { socket.emit('setname', $('uname').value, r => { if (!r.ok) return $('lerr').textContent = r.err;
+  myName = r.name; try { localStorage.setItem('ls_name', myName); } catch (e) {}
+  $('me').textContent = myName; $('lerr').textContent = ''; $('login').style.display = 'none'; $('menu').style.display = 'flex'; }); }
+$('enter').onclick = enterGame; $('uname').onkeydown = e => e.key === 'Enter' && enterGame();
+$('chg').onclick = () => { $('menu').style.display = 'none'; $('login').style.display = 'flex'; };
+$('create').onclick = () => socket.emit('create');
+$('join').onclick = () => socket.emit('join', $('code').value);
 $('startBtn').onclick = () => socket.emit('start');
-socket.on('connect', () => myId = socket.id);
+socket.on('connect', () => { myId = socket.id; if (myName && phase === 'menu') socket.emit('setname', myName, () => {}); });
 socket.on('err', e => $('err').textContent = e);
 socket.on('lobby', l => {
   host = l.host; $('menu').style.display = 'none'; if (phase === 'menu') { phase = 'lobby'; $('lobby').style.display = 'flex'; }
@@ -82,14 +94,16 @@ const sun = new THREE.DirectionalLight(0xfff0c0, 1.5); sun.position.set(40, 60, 
 const mat = c => new THREE.MeshLambertMaterial({ color: c });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), mat(0xf2c26b)); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 // dunes + rocks (instanced)
-let seed = 12345; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647, CC = [];
-const dunes = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), mat(0xe9b358), 40), rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1), mat(0xb5683a), 30), m4 = new THREE.Matrix4();
-for (let i = 0; i < 40; i++) { const a = rnd() * 6.28, r = 40 + rnd() * 110, s = 6 + rnd() * 12;
-  m4.compose(new THREE.Vector3(Math.cos(a) * r, -s * .55, Math.sin(a) * r), new THREE.Quaternion(), new THREE.Vector3(s * 1.6, s * .8, s * 1.6)); dunes.setMatrixAt(i, m4); }
-for (let i = 0; i < 30; i++) { const a = rnd() * 6.28, r = 15 + rnd() * 90, s = 1 + rnd() * 3;
-  m4.compose((CC.push([Math.cos(a) * r, Math.sin(a) * r, s * .85]), new THREE.Vector3(Math.cos(a) * r, s * .5, Math.sin(a) * r)), new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd(), rnd(), 0)), new THREE.Vector3(s, s, s)); rocks.setMatrixAt(i, m4); }
-scene.add(dunes, rocks);
-for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.ConeGeometry(30 + i * 4, 40 + i * 6, 5), mat(0x9c6b8f)); const a = i / 6 * 6.28; m.position.set(Math.cos(a) * 190, 15, Math.sin(a) * 190); scene.add(m); }
+const CC = [], sceneryObjs = [], baseObjs = [];
+function buildScenery(w) { sceneryObjs.forEach(o => scene.remove(o)); sceneryObjs.length = 0; CC.length = 0; const m4 = new THREE.Matrix4();
+  const dunes = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), mat(0xe9b358), w.dunes.length), rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1), mat(0xb5683a), w.rocks.length);
+  w.dunes.forEach((q, i) => { m4.compose(new THREE.Vector3(q.x, -q.s * .55, q.z), new THREE.Quaternion(), new THREE.Vector3(q.s * 1.6, q.s * .8, q.s * 1.6)); dunes.setMatrixAt(i, m4); });
+  w.rocks.forEach((q, i) => { CC.push([q.x, q.z, q.s * .85]); m4.compose(new THREE.Vector3(q.x, q.s * .5, q.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(q.rx, q.ry, 0)), new THREE.Vector3(q.s, q.s, q.s)); rocks.setMatrixAt(i, m4); });
+  scene.add(dunes, rocks); sceneryObjs.push(dunes, rocks);
+  const cactusM = mat(0x3e9b4f); w.cacti.forEach(c => { const g = new THREE.Group(), h = c.h, t = new THREE.Mesh(new THREE.CylinderGeometry(.25, .3, h, 8), cactusM); t.position.y = h / 2;
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, .9, 8), cactusM); a.position.set(.5, h * .6, 0); a.rotation.z = .9; g.add(t, a); g.position.set(c.x, 0, c.z); CC.push([c.x, c.z, .5]); scene.add(g); sceneryObjs.push(g); }); }
+socket.on('world', buildScenery);
+for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.ConeGeometry(30 + i * 4, 40 + i * 6, 5), mat(0x9c6b8f)); const a = i / 6 * 6.28; m.position.set(Math.cos(a) * 190, 15, Math.sin(a) * 190); scene.add(m); baseObjs.push(m); }
 // wooden house: plank texture, gable roof, porch, windows, 4 rooms
 const woodTex=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');for(let i=0;i<8;i++){x.fillStyle=`hsl(28,${45+i%3*6}%,${32+i%2*7}%)`;x.fillRect(0,i*16,128,15);x.fillStyle='#0005';x.fillRect(0,i*16+15,128,1);}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;return t;})();
 const wood=(w,h)=>{const t=woodTex.clone();t.needsUpdate=true;t.repeat.set(Math.max(1,w/3),Math.max(1,h/4));return new THREE.MeshLambertMaterial({map:t});};
@@ -109,10 +123,10 @@ box(4,.2,1.2,0,.1,12.3,wood(4,1));box(3,.2,.9,0,.3,11.6,wood(3,1));box(1.2,3.2,1
 box(5,.04,3.4,5,.33,-2.5,mat(0xc0392b));box(2.6,2.6,.5,-3,1.6,-7.6,wood(2.6,2.6));['0xe4572e','0x17a398','0xffc914','0x6a4c93','0x2f6fdb','0xe4572e'].forEach((c,i)=>box(.3,.6,.35,-3.9+i*.4,1.9,-7.3,mat(+c)));
 box(1.2,.5,1.4,6.5,1.5,3,mat(0xbbbbbb));box(.8,.2,.8,-5,1.05,-5,mat(0xfff3a0));const lamp=box(.3,1.4,.3,-9,1,3,mat(0x444444));
 [-5.5,-4.5].forEach(x=>box(.8,.25,.5,x,1.0,3.6,mat(0xfff1d6))); // pillows
-scene.add(house);
+scene.add(house);baseObjs.push(house);
 // cacti + road
-const cactusM=mat(0x3e9b4f);for(let i=0;i<16;i++){const g=new THREE.Group(),h=1.5+rnd()*1.5;const t=new THREE.Mesh(new THREE.CylinderGeometry(.25,.3,h,8),cactusM);t.position.y=h/2;const a=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,.9,8),cactusM);a.position.set(.5,h*.6,0);a.rotation.z=.9;g.add(t,a);const an=rnd()*6.28,r=20+rnd()*70;g.position.set(Math.cos(an)*r,0,Math.sin(an)*r);CC.push([g.position.x,g.position.z,.5]);scene.add(g);}
-const road=new THREE.Mesh(new THREE.PlaneGeometry(60,5),mat(0x6b5a4a));road.rotation.x=-Math.PI/2;road.position.set(15,.03,6);road.rotation.z=-.15;scene.add(road);
+
+const road=new THREE.Mesh(new THREE.PlaneGeometry(60,5),mat(0x6b5a4a));road.rotation.x=-Math.PI/2;road.position.set(15,.03,6);road.rotation.z=-.15;scene.add(road);baseObjs.push(road);
 
 function makeChar(color) { const g = new THREE.Group(), sk = 0xffd9b0;
   const S = (p, r, c, x, y, z, sx = 1, sy = 1, sz = 1, ws = 14) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, ws, 10), mat(c)); m.position.set(x, y, z); m.scale.set(sx, sy, sz); p.add(m); return m; };
@@ -146,10 +160,10 @@ else if(type==='handbrake'){b(.1,.8,.1,0x111111);b(.25,.12,.12,0xcc2222,0,.45,0)
 else if(type==='windshield')b(.05,.9,1.3,0x9fe3ff);else if(type.startsWith('door')){b(1,.9,.1,0x2f6fdb);b(.8,.3,.05,0x9fe3ff,0,.25,.06);}else g.add(new THREE.Mesh(new THREE.SphereGeometry(.4),mat(0xffd400)));
 const ring=new THREE.Mesh(new THREE.TorusGeometry(.8,.05,6,20),new THREE.MeshBasicMaterial({color:0xffee66}));ring.rotation.x=Math.PI/2;ring.position.y=-.9;g.add(ring);return g;}
 // truck: broken until repaired, every part installs separately
-const truck=new THREE.Group(),tp={};
+function buildTruck(BLUE){const truck=new THREE.Group(),tp={};
 {const B=(w,h,d,c,o)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),o||mat(c));m.castShadow=!isMobile;return m;};
 const put=(o,x,y,z,g=truck)=>{o.position.set(x,y,z);g.add(o);return o;};
-const glass=()=>new THREE.MeshLambertMaterial({color:0x9fe3ff,transparent:true,opacity:.45}),BLUE=0x2f6fdb,RUST=0x8a4b2a;
+const glass=()=>new THREE.MeshLambertMaterial({color:0x9fe3ff,transparent:true,opacity:.45}),RUST=0x8a4b2a;
 put(B(5.4,.4,2.1,0x2b2b2b),0,.95,0);put(B(2.3,.9,2.2,BLUE),1.55,1.5,0);put(B(.15,.5,2,0x333333),2.75,1.2,0);
 put(B(2,.2,2.1,RUST),-2,1.2,0);[-1,1].forEach(q=>put(B(2,.8,.1,BLUE),-2,1.7,q*1.05));put(B(.1,.8,2.1,BLUE),-3,1.7,0);put(B(.1,.8,2.1,BLUE),-1,1.7,0);
 put(B(2.6,.1,2.1,0x444444),-.6,1.25,0);[[.7,1],[.7,-1],[-1.9,1],[-1.9,-1]].forEach(([x,z])=>put(B(.12,1.5,.12,0x333333),x,2.05,z));put(B(2.8,.12,2.2,BLUE),-.6,2.85,0);put(B(.5,.45,2,0x222222),.45,1.9,0);
@@ -170,7 +184,10 @@ tp.wheels.forEach(w=>{for(let i=0;i<5;i++){const a=i/5*6.28;[-1,1].forEach(q=>{c
 [-1,1].forEach(q=>{put(B(.12,.12,.4,0x222222),.35,2.45,q*1.2).rotation.y=0;put(B(.1,.35,.25,0xcccccc),.3,2.3,q*1.12);put(B(1.1,.12,.25,0x222222),1.5,1.05,q*1.15);});
 put(B(.1,.45,1.2,0x333333),2.78,1.5,0);for(let i=0;i<5;i++)put(B(.05,.35,.04,0xbbbbbb),2.84,1.5,-.45+i*.22);put(B(.04,.25,.6,0xffffff),-3.05,1.25,0);const ex=put(new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.9,8),mat(0x666666)),-2.7,.85,-.8);ex.rotation.z=Math.PI/2;
 tp.key=keyModel(.28);tp.key.position.set(.35,1.95,.15);truck.add(tp.key);}
-scene.add(truck);
+return {truck,tp};}
+const T1=buildTruck(0x2f6fdb),truck=T1.truck,tp=T1.tp;scene.add(truck);
+const W1=buildTruck(0x6f6a58),wreck=W1.truck,wp=W1.tp;scene.add(wreck);wreck.position.set(-34,0,26);wreck.rotation.y=2.2; // dead car: won't run, but its parts work
+[wp.engine,wp.battery,wp.fuel,wp.tools,wp.brake,wp.handbrake,wp.seats,wp.windshield,wp.key,...wp.doors,wp.wheels[2],...wp.lights].forEach(o=>o.visible=false);wp.hood.rotation.z=.9;
 let lastStep='';function updateTruck(fx){const k=fx.join();if(k===lastStep)return;lastStep=k;const on=t=>fx.includes(t);
 tp.engine.visible=on('engine');tp.battery.visible=on('battery');tp.wheels[2].visible=on('tyre');tp.fuel.visible=on('fuel');tp.brake.visible=on('brake');tp.handbrake.visible=on('handbrake');tp.seats.visible=on('seats');tp.windshield.visible=on('windshield');tp.doors.forEach((d,i)=>d.visible=on('door'+(i+1)));tp.key.visible=on('key');tp.tools.visible=on('tools');
 tp.lights.forEach(l=>{l.material.color.set(fx.length>=NP?0xfff3a0:0x555555);l.material.emissive=new THREE.Color(fx.length>=NP?0x998800:0);});}
@@ -181,13 +198,15 @@ const sand = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xe8b765, si
 
 // ---------- game state ----------
 const items = {}, labels = {};
+let wreckTh = 2.2;
 socket.on('start', s => {
   phase = 'play'; $('lobby').style.display = 'none'; $('hud').style.display = 'block'; if (isMobile) $('mob').style.display = 'block';
-  G = { avatars: {}, target: {}, colors: {}, me: { x: -2 + Math.max(0, (window._lobby?.players || []).findIndex(p => p.id === myId)) * 1.5, z: -1.5, ry: 0, vy: 0, y: 0 }, truck: s.truck, storm: 0, step: 0, taken: [], fixed: [], ipos: [], boarded: 0, t: 0, a: 'idle', stormMs: s.stormMs };
+  G = { avatars: {}, target: {}, colors: {}, me: { x: -2 + Math.max(0, (window._lobby?.players || []).findIndex(p => p.id === myId)) * 1.5, z: -1.5, ry: 0, vy: 0, y: 0 }, truck: s.truck, wreck: s.wreck, storm: 0, step: 0, taken: [], fixed: [], ipos: [], boarded: 0, t: 0, a: 'idle', stormMs: s.stormMs };
   (window._lobby?.players || []).forEach(p => G.colors[p.id] = p.color);
   truck.position.set(s.truck.x, 0, s.truck.z); truck.rotation.y = .5;
-  s.items.forEach(it => { const m = itemMesh(it.type); m.position.set(it.x, 1.2, it.z); scene.add(m); items[it.id] = { m, ...it }; });
-  document.exitPointerLock; showMsg('📻 EMERGENCY: sandstorm approaching! Find truck parts and repair the truck at the road!');
+  wreck.position.set(s.wreck.x, 0, s.wreck.z); wreck.rotation.y = wreckTh = s.wreck.th;
+  s.items.forEach(it => { const m = itemMesh(it.type); m.position.set(it.x, it.mounted ? it.y : 1.2, it.z); scene.add(m); items[it.id] = { m, ...it }; });
+  document.exitPointerLock?.(); showMsg('📻 EMERGENCY: sandstorm approaching! Collect parts – scattered ones AND parts stripped from the old wreck – and repair the truck!');
   initAudio(); radioBeep();
 });
 socket.on('state', s => { if (!G) return; G.storm = s.storm; G.step = s.fixed.length; G.fixed = s.fixed; G.ipos = s.it; G.taken = s.it.map((q, i) => q[0] ? i : -1).filter(i => i >= 0); G.boarded = s.boarded;
@@ -195,7 +214,8 @@ socket.on('state', s => { if (!G) return; G.storm = s.storm; G.step = s.fixed.le
     if (!G.avatars[id]) { G.avatars[id] = makeChar(COLORS[G.colors[id] ?? 0]); scene.add(G.avatars[id]); }
     G.target[id] = s.p[id]; } });
 socket.on('msg', showMsg);
-socket.on('end', r => { phase = 'end'; $('end').style.display = 'flex'; $('endT').textContent = r === 'won' ? '🏆 You escaped together!' : '🌪 The storm got you…'; jingle(r === 'won'); });
+socket.on('end', r => { phase = 'end'; $('end').style.display = 'flex'; $('crash').style.opacity = 0;
+  $('endT').textContent = { won: '🏆 You escaped the storm – 5 km!', lost: '🌪 The storm got you…', crash: '💥 The truck stopped for good… 🧟 the zombies got you', zombie: '🧟 The zombies got you…' }[r] || 'Game over'; jingle(r === 'won'); });
 let mt; function showMsg(t) { $('msg').textContent = t; clearTimeout(mt); mt = setTimeout(() => $('msg').textContent = '', 5000); }
 
 // ---------- input ----------
@@ -242,11 +262,81 @@ function pushBox(m, x, z, w, d) { const cx = Math.max(x - w / 2, Math.min(x + w 
 function collide(m) { for (let k = 0; k < 2; k++) {
   for (const [x, z, w, d, h] of BOX) if (m.y < h - .3) pushBox(m, x, z, w, d);
   for (const [x, z, r] of CC) { const dx = m.x - x, dz = m.z - z, l = Math.hypot(dx, dz); if (l < r + PR && l > 1e-4) { m.x = x + dx / l * (r + PR); m.z = z + dz / l * (r + PR); } }
-  if (G.truck && m.y < 2.5) { const th = .5, c = Math.cos(th), sn = Math.sin(th), dx = m.x - G.truck.x, dz = m.z - G.truck.z, t = { x: dx * c - dz * sn, z: dx * sn + dz * c }, ox = t.x, oz = t.z;
+  for (const [V, th] of [[G.truck, .5], [G.wreck, G.wreck && G.wreck.th]]) if (V && m.y < 2.5) { const c = Math.cos(th), sn = Math.sin(th), dx = m.x - V.x, dz = m.z - V.z, t = { x: dx * c - dz * sn, z: dx * sn + dz * c }, ox = t.x, oz = t.z;
     pushBox(t, 0, 0, 5.8, 2.5); const px = t.x - ox, pz = t.z - oz; m.x += px * c + pz * sn; m.z += -px * sn + pz * c; } } }
 const SLOTS = { engine: [1.5, 1.7, 0], battery: [2.05, 1.95, .7], tyre: [-1.7, .6, 1.3], fuel: [-1.05, 1.7, .75], brake: [1.7, .6, 1.02], handbrake: [-.1, 1.55, 0], seats: [-.8, 1.5, 0], windshield: [.75, 2.4, 0], door1: [.1, 2, 1.1], door2: [.1, 2, -1.1], door3: [-1.3, 2, 1.1], door4: [-1.3, 2, -1.1], tools: [0, .25, 3.2], key: [.35, 1.95, .15] };
 const slotWorld = t => { const [lx, , lz] = SLOTS[t], c = Math.cos(.5), n = Math.sin(.5); return { x: G.truck.x + lx * c + lz * n, z: G.truck.z - lx * n + lz * c }; };
 const slotMark = new THREE.Mesh(new THREE.SphereGeometry(.4, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffee33, transparent: true, opacity: .55, depthTest: false })); slotMark.visible = false; slotMark.renderOrder = 998; truck.add(slotMark);
+// ---------- drive phase: storm hits, escape 5 km (3 crashes = truck dead, zombies pop up) ----------
+let Z0 = 400, DR = null; const driveObjs = [];
+const roadX = zr => Math.sin(zr / 260) * 25 + Math.sin(zr / 97) * 8;
+const zSkin = mat(0x8fd07a), zShirt = mat(0x4a4f3a), eyeM = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+function makeZombie() { const g = new THREE.Group(), p = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  p(new THREE.BoxGeometry(.8, 1.1, .45), zShirt, 0, 1.3, 0); p(new THREE.SphereGeometry(.38, 10, 8), zSkin, 0, 2.2, 0);
+  [-1, 1].forEach(q => { p(new THREE.SphereGeometry(.07, 6, 5), eyeM, q * .15, 2.27, .32); const arm = p(new THREE.BoxGeometry(.22, .22, 1), zSkin, q * .55, 1.7, .45); arm.rotation.x = -.25; });
+  g.userData.legs = [-1, 1].map(q => p(new THREE.BoxGeometry(.28, .85, .3), zShirt, q * .22, .45, 0)); g.scale.setScalar(1.25); return g; }
+function makeObstacle([type, x, z, r, rot]) { const g = new THREE.Group(), add = (geo, c, px, py, pz) => { const m = new THREE.Mesh(geo, mat(c)); m.position.set(px, py, pz); g.add(m); return m; };
+  if (type === 0) { const m = add(new THREE.DodecahedronGeometry(r), 0x8a5a3a, 0, r * .7, 0); m.rotation.set(rot, rot * 2, 0); }
+  else if (type === 1) { add(new THREE.CylinderGeometry(.45, .55, 3.4, 8), 0x3e9b4f, 0, 1.7, 0); add(new THREE.CylinderGeometry(.25, .25, 1.4, 8), 0x3e9b4f, .9, 2.2, 0).rotation.z = .9; add(new THREE.CylinderGeometry(.25, .25, 1.2, 8), 0x3e9b4f, -.8, 1.9, 0).rotation.z = -.9; }
+  else if (type === 2) { add(new THREE.BoxGeometry(4.2, .9, 2), 0x7b4a2a, 0, .9, 0); add(new THREE.BoxGeometry(2, .8, 1.8), 0x6f6a58, -.3, 1.7, 0); [[1.4, 1], [1.4, -1], [-1.4, 1], [-1.4, -1]].forEach(([wx, wz]) => { add(new THREE.CylinderGeometry(.5, .5, .4, 12), 0x1a1a1a, wx, .5, wz).rotation.x = Math.PI / 2; }); }
+  else { add(new THREE.CylinderGeometry(.8, .8, 1.5, 12), 0xd62828, 0, .75, 0); add(new THREE.CylinderGeometry(.82, .82, .2, 12), 0xffc914, 0, .75, 0); }
+  g.position.set(x, 0, z); g.rotation.y = rot; return g; }
+socket.on('driver', id => { if (G) G.driver = id; });
+socket.on('drive_start', d => { if (!G) return; Z0 = d.z0; phase = 'drive'; document.exitPointerLock?.(); G.drive = true; G.driver = d.driver; G.goal = d.goal; G.maxCrash = d.maxCrash;
+  baseObjs.concat(sceneryObjs).forEach(o => o.visible = false); wreck.visible = false; for (const id in items) items[id].m.visible = false;
+  Object.values(G.avatars).forEach(a => a.visible = false); if (G.vm) G.vm.visible = false; sun.castShadow = false; $('mob').querySelectorAll('button').forEach(b => b.style.display = 'none');
+  DR = { s: null, rt: performance.now(), x: d.x, z: d.z, th: d.th, v: 0, crash: 0, hitDone: {}, fly: [], zm: {}, obs: [], t: 0, inT: 0, ls: 0, lt: 1, flash: 0, hudT: 0, zmsgT: -10, camInit: true };
+  truck.position.set(d.x, 0, d.z); truck.rotation.y = d.th; ground.position.set(d.x, 0, d.z);
+  // road + dashed centre line
+  const step = 8, n = Math.ceil((d.goal + 160) / step), strip = (w, y, color, dash) => { const P = [], I = []; let k = 0;
+    for (let i = 0; i < n; i++) { if (dash && i % 2) continue; const a = -40 + i * step, b = a + (dash ? step * .55 : step), c0 = roadX(Math.max(0, a)), c1 = roadX(Math.max(0, b));
+      P.push(c0 - w, y, Z0 + a, c0 + w, y, Z0 + a, c1 - w, y, Z0 + b, c1 + w, y, Z0 + b); I.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); k += 4; }
+    const gm = new THREE.BufferGeometry(); gm.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); gm.setIndex(I); gm.computeVertexNormals();
+    const ms = new THREE.Mesh(gm, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide })); scene.add(ms); driveObjs.push(ms); };
+  strip(9, .08, 0x4a4038, false); strip(.25, .14, 0xf2d15c, true);
+  // roadside decor (outside the 19 m drivable corridor)
+  const m4 = new THREE.Matrix4(), tot = d.goal + 140, side = () => (Math.random() < .5 ? -1 : 1), zr = () => Math.random() * tot - 40, qt = () => new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), 0));
+  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1), mat(0xb5683a), 300), pil = new THREE.InstancedMesh(new THREE.CylinderGeometry(.3, .4, 1, 7), mat(0x3e9b4f), 160), hills = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), mat(0xe9b358), 70);
+  for (let i = 0; i < 300; i++) { const z = zr(), s = .8 + Math.random() * 2.4; m4.compose(new THREE.Vector3(roadX(Math.max(0, z)) + side() * (21 + Math.random() * 50), s * .4, Z0 + z), qt(), new THREE.Vector3(s, s, s)); rocks.setMatrixAt(i, m4); }
+  for (let i = 0; i < 160; i++) { const z = zr(), h = 1.5 + Math.random() * 2; m4.compose(new THREE.Vector3(roadX(Math.max(0, z)) + side() * (21 + Math.random() * 45), h / 2, Z0 + z), new THREE.Quaternion(), new THREE.Vector3(1, h, 1)); pil.setMatrixAt(i, m4); }
+  for (let i = 0; i < 70; i++) { const z = zr(), s = 10 + Math.random() * 12; m4.compose(new THREE.Vector3(roadX(Math.max(0, z)) + side() * (60 + Math.random() * 70), -s * .5, Z0 + z), new THREE.Quaternion(), new THREE.Vector3(s * 1.5, s * .8, s * 1.5)); hills.setMatrixAt(i, m4); }
+  [rocks, pil, hills].forEach(o => { o.frustumCulled = false; scene.add(o); driveObjs.push(o); });
+  d.obs.forEach((o, i) => { const g = makeObstacle(o); scene.add(g); driveObjs.push(g); DR.obs[i] = g; });
+  showMsg('🌪 THE STORM HITS! Drive 5 km without wrecking the truck – 3 crashes and it is dead! 🧟'); radioBeep(); });
+socket.on('drive', s => { if (!DR) return; DR.s = s; DR.rt = performance.now();
+  if (s.c > DR.crash) { DR.crash = s.c; DR.flash = 1; beep(110, .6, 'sawtooth'); showMsg(s.dead ? '💥 The truck is DEAD… the zombies are coming!' : `💥 CRASH ${s.c}/${G.maxCrash}! Engine stalled – zombies are coming!`); }
+  s.hit.forEach(i => { if (DR.hitDone[i]) return; DR.hitDone[i] = 1; const g = DR.obs[i]; if (g) DR.fly.push({ g, vx: (Math.random() - .5) * 10, vy: 9, vz: 8, t: 0 }); });
+  const seen = {}; let fresh = false;
+  s.zs.forEach(([id, x, z]) => { seen[id] = 1; let o = DR.zm[id]; if (!o) { o = DR.zm[id] = { m: makeZombie(), age: 0, x, z }; o.m.position.set(x, -3, z); scene.add(o.m); fresh = true; } o.tx = x; o.tz = z; });
+  for (const id in DR.zm) if (!seen[id]) { const o = DR.zm[id]; if (Math.hypot(o.x - DR.x, o.z - DR.z) < 8) beep(70, .25, 'square'); scene.remove(o.m); delete DR.zm[id]; }
+  if (fresh && DR.t - DR.zmsgT > 4) { DR.zmsgT = DR.t; showMsg('🧟 ZOMBIES rising from the sand!'); beep(90, .3, 'square'); } });
+function driveFrame(dt) { const s = DR.s; DR.t += dt;
+  if (phase === 'drive' && G.driver === myId) { // only the driver sends steering
+    const jx = Math.abs(joy.x) < .12 ? 0 : joy.x, steer = Math.max(-1, Math.min(1, (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + jx)), thr = (keys.KeyS || keys.ArrowDown || joy.y > .5) ? -1 : 1;
+    DR.inT += dt; if (DR.inT > .05 || steer !== DR.ls || thr !== DR.lt) { DR.inT = 0; DR.ls = steer; DR.lt = thr; socket.emit('drive_in', { steer, thr }); } }
+  const k = 1 - Math.exp(-dt * 14);
+  if (s) { const age = Math.min(.12, (performance.now() - DR.rt) / 1000), tx = s.x + Math.cos(s.th) * s.v * age, tz = s.z - Math.sin(s.th) * s.v * age;
+    DR.x += (tx - DR.x) * k; DR.z += (tz - DR.z) * k; DR.th += (s.th - DR.th) * k; DR.v += (s.v - DR.v) * k; }
+  const fx = Math.cos(DR.th), fz = -Math.sin(DR.th);
+  truck.position.set(DR.x, Math.sin(DR.t * 25) * .02 * Math.min(1, DR.v / 10), DR.z); truck.rotation.y = DR.th; tp.wheels.forEach(w => w.rotation.y += DR.v * dt / .6); ground.position.set(DR.x, 0, DR.z);
+  // chase camera
+  const sh = DR.v / 30 * .06; _v.set(DR.x - fx * 11, 5.4, DR.z - fz * 11); if (DR.camInit) { cam.position.copy(_v); DR.camInit = false; } else cam.position.lerp(_v, 1 - Math.exp(-dt * 8));
+  cam.position.x += (Math.random() - .5) * sh; cam.position.y += (Math.random() - .5) * sh; cam.lookAt(DR.x + fx * 7, 1.6, DR.z + fz * 7);
+  // storm atmosphere
+  scene.background.copy(stormSky); scene.fog.color.copy(stormSky); scene.fog.density = .016; sand.material.opacity = .75; const a = pg.attributes.position.array;
+  for (let i = 0; i < N; i++) { a[i * 3] -= 40 * dt; a[i * 3 + 1] += Math.sin(DR.t + i) * dt; if (a[i * 3] < -30) a[i * 3] = 30; }
+  pg.attributes.position.needsUpdate = true; sand.position.set(DR.x, 8, DR.z); $('storm').style.opacity = .5;
+  // zombies + smashed obstacles
+  for (const id in DR.zm) { const o = DR.zm[id]; o.age += dt; o.x += (o.tx - o.x) * k; o.z += (o.tz - o.z) * k; const pop = Math.min(1, o.age / .9);
+    o.m.position.set(o.x, -3 * (1 - pop), o.z); o.m.rotation.y = Math.atan2(DR.x - o.x, DR.z - o.z); const sw = Math.sin(DR.t * 10 + +id) * .7; o.m.userData.legs[0].rotation.x = sw; o.m.userData.legs[1].rotation.x = -sw; }
+  DR.fly = DR.fly.filter(f => { f.t += dt; f.g.position.x += f.vx * dt; f.g.position.z += f.vz * dt; f.g.position.y += (f.vy - 20 * f.t) * dt; f.g.rotation.x += dt * 6; if (f.t > 1.4) { f.g.visible = false; return false; } return true; });
+  // HUD
+  DR.flash = Math.max(0, DR.flash - dt * 1.2); $('crash').style.opacity = Math.max(DR.flash, s ? Math.min(.85, s.att / 4) : 0);
+  DR.hudT -= dt; if (DR.hudT <= 0 && s) { DR.hudT = .1; const km = Math.min(G.goal, s.d) / 1000, pct = Math.round(Math.min(G.goal, s.d) / G.goal * 100), drv = (window._lobby?.players || []).find(p => p.id === G.driver),
+      hearts = '❤️'.repeat(Math.max(0, G.maxCrash - s.c)) + '🖤'.repeat(Math.min(G.maxCrash, s.c));
+    $('hud').innerHTML = `<span class="box">🚚 ${km.toFixed(2)} / ${(G.goal / 1000).toFixed(1)} km</span><span class="box">${hearts}</span><span class="box">⚡ ${Math.round(s.v * 3.6)} km/h</span><span class="box">🧑‍✈️ ${drv ? drv.name : '?'} drives</span><br>` +
+      `<span class="box" style="display:block;width:min(420px,90vw);padding:4px 8px"><span style="display:block;height:10px;border-radius:6px;background:linear-gradient(90deg,#17a398 ${pct}%,#0002 ${pct}%)"></span></span>`;
+    $('prompt').textContent = s.dead ? '🧟 The truck is dead…' : s.att > .5 ? '🧟 Zombies are grabbing the truck!' : s.ready ? 'Get ready…' : s.st ? '💥 Engine stalled – restarting…' : G.driver === myId ? (isMobile ? 'Joystick: left/right steer · down = brake' : '[A/D] steer · [S] brake · dodge rocks, cacti, wrecks & zombies!') : 'Hold on tight! ' + (drv ? drv.name : 'the driver') + ' is driving.'; } }
 // ---------- main loop ----------
 let last = performance.now(), sendT = 0; const _v = new THREE.Vector3();
 function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now - last) / 1000); last = now;
@@ -265,7 +355,9 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
     for (const id in G.target) { const av = G.avatars[id], t = G.target[id]; if (!av) continue; // interpolation
       av.position.x += (t[0] - av.position.x) * Math.min(1, dt * 10); av.position.z += (t[1] - av.position.z) * Math.min(1, dt * 10);
       let dr = t[2] - av.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); av.rotation.y += dr * Math.min(1, dt * 10); animate(av, t[3], G.t); }
-    for (const id in items) { const it = items[id], tk = G.taken.includes(+id); it.m.visible = !tk; const q = G.ipos[id]; if (q) { it.m.position.x = it.x = q[1]; it.m.position.z = it.z = q[2]; } it.m.rotation.y += dt * 2; it.m.position.y = 1.2 + Math.sin(G.t * 3 + +id) * .25; }
+    for (const id in items) { const it = items[id], tk = G.taken.includes(+id); it.m.visible = !tk; const q = G.ipos[id]; if (q) { it.m.position.x = it.x = q[1]; it.m.position.z = it.z = q[2]; }
+      const mt = q ? q[4] : it.mounted, ring = it.m.children[it.m.children.length - 1]; if (ring) ring.visible = !mt;
+      if (mt) { it.m.rotation.y = wreckTh; it.m.position.y = it.y; } else { it.m.rotation.y += dt * 2; it.m.position.y = 1.2 + Math.sin(G.t * 3 + +id) * .25; } }
     updateTruck(G.fixed);tp.hood.rotation.z+=((G.step>=6?0:.9)-tp.hood.rotation.z)*Math.min(1,dt*4);
     // storm: sky, fog, particles, wind, overlay
     const s = G.storm; scene.background.copy(clearSky).lerp(stormSky, s); scene.fog.color.copy(scene.background); scene.fog.density = .004 + s * s * .05;
@@ -276,14 +368,15 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
     cam.rotation.order = 'YXZ'; cam.position.set(m.x, m.y + 1.65, m.z); cam.rotation.set(-pitch, yaw, 0); { const sh = G.storm * .06; cam.position.x += (Math.random() - .5) * sh; cam.position.y += (Math.random() - .5) * sh; }
     // HUD
     const left = Math.max(0, Math.round((1 - s) * G.stormMs / 1000)), n = G.taken.length, np = Object.keys(G.avatars).length;
-    const hid = heldId(); const mission = G.step >= NP ? (G.boarded < np ? 'Everyone get in the truck! (E near truck)' : 'Escaping…') : hid >= 0 ? 'Carry the ' + LABEL[PARTS[hid]] + ' to the glowing spot on the truck' : 'Find parts and fit them on the truck';
+    const hid = heldId(); const mission = G.step >= NP ? (G.boarded < np ? 'Everyone get in the truck! (E near truck)' : 'Escaping…') : hid >= 0 ? 'Carry the ' + LABEL[PARTS[hid]] + ' to the glowing spot on the truck' : 'Collect parts: scattered ones + strip the old wreck car, then fit them on the truck';
     $('hud').innerHTML = `<span class="box">🎯 ${mission}</span><span class="box">🔧 fitted ${G.step}/${NP}${hid >= 0 ? ' · holding ' + LABEL[PARTS[hid]] : ''}</span><span class="box">🌪 Storm in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span><span class="box">👥 ${np} · 🚚 ${G.boarded} aboard</span><br>` +
       '<span class="box" style="font-size:14px">' + PARTS.map(p => (items.length, G.taken.includes(PARTS.indexOf(p)) ? '✅' : '⬜') + LABEL[p]).join(' ') + '</span>';
     const ni = nearestItem(), ht = hid >= 0 ? PARTS[hid] : null, sp = ht ? slotWorld(ht) : null;
-    $('prompt').textContent = ht ? (dist(m, sp) < 2.6 ? `[E] Fit the ${LABEL[ht]} here` : '[Q] drop · carry it to the glowing spot') : ni !== null ? `[E] Pick up ${LABEL[items[ni].type]}` : (dist(m, G.truck) < 8 && G.step >= NP) ? '[E] Get in the truck' : '';
+    $('prompt').textContent = ht ? (dist(m, sp) < 2.6 ? `[E] Fit the ${LABEL[ht]} here` : '[Q] drop · carry it to the glowing spot') : ni !== null ? `[E] ${(G.ipos[ni] ? G.ipos[ni][4] : items[ni].mounted) ? 'Remove' : 'Pick up'} ${LABEL[items[ni].type]}` : (dist(m, G.truck) < 8 && G.step >= NP) ? '[E] Get in the truck' : '';
     if (G.heldT !== ht) { if (G.heldM) G.vm.remove(G.heldM); G.heldM = null; G.heldT = ht; if (ht) { const hm = itemMesh(ht); hm.remove(hm.children[hm.children.length - 1]); hm.scale.setScalar(.5); hm.position.set(0, -.42, -.95); hm.traverse(o => { if (o.material) o.material.depthTest = false; o.renderOrder = 999; }); G.vm.add(hm); G.heldM = hm; } }
     if (G.heldM) G.heldM.rotation.y += dt;
     slotMark.visible = !!ht; if (ht) { const sl = SLOTS[ht]; slotMark.position.set(sl[0], sl[1], sl[2]); slotMark.scale.setScalar(1 + Math.sin(G.t * 6) * .15); }
+  } else if (G && G.drive && DR) { driveFrame(dt);
   } else { cam.position.set(Math.sin(now / 4000) * 25, 10, Math.cos(now / 4000) * 25); cam.lookAt(0, 2, 0); }
   renderer.render(scene, cam); }
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); });
