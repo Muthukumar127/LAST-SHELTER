@@ -47,7 +47,7 @@ button.alt{background:var(--red)}input{background:#fff;text-align:center;width:1
 <script type="module">
 import * as THREE from 'three';
 const $ = id => document.getElementById(id), socket = io();
-const isMobile = /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent) || 'ontouchstart' in window;
+const isMobile = /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent) || matchMedia('(pointer:coarse)').matches;
 const COLORS = [0xe4572e, 0x17a398, 0x6a4c93, 0xffc914], PARTS = ['tools','engine','battery','tyre','fuel','key'];
 const LABEL = { tools:'Repair tools', engine:'Engine', battery:'Battery', tyre:'Spare tyre', fuel:'Fuel can', key:'Car key' };
 const STEP_TXT = ['Fix the engine with tools','Install the engine','Install the battery','Fit the tyre','Fill the fuel tank','Start the engine'];
@@ -89,15 +89,24 @@ for (let i = 0; i < 30; i++) { const a = Math.random() * 6.28, r = 15 + Math.ran
   m4.compose(new THREE.Vector3(Math.cos(a) * r, s * .5, Math.sin(a) * r), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), 0)), new THREE.Vector3(s, s, s)); rocks.setMatrixAt(i, m4); }
 scene.add(dunes, rocks);
 for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.ConeGeometry(30 + i * 4, 40 + i * 6, 5), mat(0x9c6b8f)); const a = i / 6 * 6.28; m.position.set(Math.cos(a) * 190, 15, Math.sin(a) * 190); scene.add(m); }
-// house (4 rooms: living, kitchen, bedroom, garage) with open doorways
-const house = new THREE.Group(), wall = (w, h, d, x, z, c = 0xfff1d6) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)); m.position.set(x, h / 2, z); m.castShadow = true; house.add(m); };
-const HW = { x0: -8, x1: 8, z0: -7, z1: 7 };
-wall(16, 4, .4, 0, -7); wall(16, 4, .4, 0, 7); wall(.4, 4, 14, -8, 0); wall(.4, 4, 14, 8, 0); wall(.4, 4, 5, 0, -4.5); wall(.4, 4, 5, 0, 4.5); wall(10, 4, .4, -3, 0, 0xffe0b0);
-const roof = new THREE.Mesh(new THREE.BoxGeometry(17, .5, 15), mat(0xe4572e)); roof.position.y = 4.3; roof.visible = true; house.add(roof);
-[[-4, 3, 0x17a398], [-4, -4, 0xffc914], [4, 3.5, 0x6a4c93]].forEach(([x, z, c]) => { const f = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 1.4), mat(c)); f.position.set(x, .5, z); house.add(f); });
-const radio = new THREE.Mesh(new THREE.BoxGeometry(1.2, .8, .6), mat(0x222222)); radio.position.set(-6.5, 1.2, -5.5); house.add(radio); scene.add(house);
-// doorway gap on south wall: make player free to leave by removing collision (we clamp only to map)
-scene.remove(house); house.children[1].scale.x = .001; house.children[1].visible = false; scene.add(house);
+// wooden house: plank texture, gable roof, porch, windows, 4 rooms
+const woodTex=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');for(let i=0;i<8;i++){x.fillStyle=`hsl(28,${45+i%3*6}%,${32+i%2*7}%)`;x.fillRect(0,i*16,128,15);x.fillStyle='#0005';x.fillRect(0,i*16+15,128,1);}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;return t;})();
+const wood=(w,h)=>{const t=woodTex.clone();t.needsUpdate=true;t.repeat.set(Math.max(1,w/3),Math.max(1,h/4));return new THREE.MeshLambertMaterial({map:t});};
+const house=new THREE.Group(),box=(w,h,d,x,y,z,m)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=!isMobile;o.receiveShadow=true;house.add(o);return o;};
+const wallM=(w,h)=>wood(w,h);
+box(20,.3,16,0,.15,0,mat(0x7a4a24)); // floor
+box(20,4.5,.4,0,2.25,-8,wallM(20,4.5)); box(8.5,4.5,.4,-5.75,2.25,8,wallM(8.5,4.5)); box(8.5,4.5,.4,5.75,2.25,8,wallM(8.5,4.5)); box(3,1.2,.4,0,3.9,8,wallM(3,1.2));
+box(.4,4.5,16,-10,2.25,0,wallM(16,4.5)); box(.4,4.5,16,10,2.25,0,wallM(16,4.5));
+box(.3,4.5,5,0,2.25,-5.5,wallM(5,4.5)); box(.3,4.5,5,0,2.25,5.5,wallM(5,4.5)); box(10,4.5,.3,-5,2.25,0,wallM(10,4.5)); // room dividers (doorways kept open)
+[[-5,-8.25],[5,-8.25],[-10.25,-3],[10.25,3],[-6,8.25],[6,8.25]].forEach(([x,z])=>{const o=box(Math.abs(z)>8?2.2:.15,1.6,Math.abs(z)>8?.15:2.2,x,2.6,z,new THREE.MeshLambertMaterial({color:0x9fe3ff,transparent:true,opacity:.6}));}); // windows
+[-1,1].forEach(s=>{const r=box(23,.4,9.4,0,5.5,s*4.2,wood(23,9));r.rotation.x=s*.52;r.material=mat(s>0?0xb0522d:0x9c4624);}); box(23,.4,.5,0,6.55,0,mat(0x6b3418));
+box(21,.35,4,0,.2,10,wood(21,4)); [-9,9].forEach(x=>box(.3,3,.3,x,1.7,11.6,mat(0x6b3418))); box(21,.2,4.4,0,3.2,10,mat(0xb0522d)); // porch
+[[-5,-5,0x17a398,3,1.1,1.6],[-6,4,0xffc914,2.6,.8,1.8],[5,-5,0x6a4c93,2.4,.9,3.4],[6.5,3,0xe4572e,1.4,1.2,1.4]].forEach(([x,z,c,w,h,d])=>box(w,h,d,x,.3+h/2,z,mat(c))); // sofa, bed, table, counter
+const radio=box(1.2,.8,.6,-9.2,1.4,-6,mat(0x222222)); box(.2,.5,.2,-9.2,2.1,-6,mat(0xcccccc));
+scene.add(house);
+// cacti + road
+const cactusM=mat(0x3e9b4f);for(let i=0;i<16;i++){const g=new THREE.Group(),h=1.5+Math.random()*1.5;const t=new THREE.Mesh(new THREE.CylinderGeometry(.25,.3,h,8),cactusM);t.position.y=h/2;const a=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,.9,8),cactusM);a.position.set(.5,h*.6,0);a.rotation.z=.9;g.add(t,a);const an=Math.random()*6.28,r=20+Math.random()*70;g.position.set(Math.cos(an)*r,0,Math.sin(an)*r);scene.add(g);}
+const road=new THREE.Mesh(new THREE.PlaneGeometry(60,5),mat(0x6b5a4a));road.rotation.x=-Math.PI/2;road.position.set(15,.03,6);road.rotation.z=-.15;scene.add(road);
 
 function makeChar(color) { const g = new THREE.Group(), b = mat(color);
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(.4, .5, 4, 8), b); body.position.y = .9; g.add(body);
@@ -110,11 +119,21 @@ function makeChar(color) { const g = new THREE.Group(), b = mat(color);
 function animate(g, a, t) { const sp = a === 'run' ? 14 : 8, amp = a === 'idle' ? 0 : (a === 'run' ? .5 : .3);
   const s = Math.sin(t * sp) * amp; g.userData.feet[0].position.z = .08 + s; g.userData.feet[1].position.z = .08 - s;
   g.userData.arms[0].position.z = -s * .8; g.userData.arms[1].position.z = s * .8; g.userData.head.position.y = 1.75 + (a === 'idle' ? Math.sin(t * 2) * .02 : Math.abs(s) * .15); }
-// truck
-const truck = new THREE.Group(); { const body = new THREE.Mesh(new THREE.BoxGeometry(5, 1.2, 2.4), mat(0x2f6fdb)), cab = new THREE.Mesh(new THREE.BoxGeometry(2, 1.1, 2.2), mat(0x4a8cff));
-  body.position.y = 1.1; cab.position.set(-1, 2.1, 0); truck.add(body, cab);
-  [[-1.7, 1.3], [1.7, 1.3], [-1.7, -1.3], [1.7, -1.3]].forEach(([x, z]) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, .4, 14), mat(0x222222)); w.rotation.x = Math.PI / 2; w.position.set(x, .55, z); truck.add(w); }); }
+// truck with removable/installable parts
+const truck=new THREE.Group(),tp={};{const add=(o,x,y,z,g=truck)=>{o.position.set(x,y,z);o.castShadow=!isMobile;g.add(o);return o;};const B=(w,h,d,c)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));
+add(B(5.2,.5,2.3,0x333333),0,.9,0);add(B(2.2,.9,2.3,0x2f6fdb),1.5,1.5,0);add(B(2.2,1.1,2.1,0x4a8cff),-.6,2.2,0);add(B(1.4,.5,1.9,0x9fe3ff),-.6,2.5,0).material=new THREE.MeshLambertMaterial({color:0x9fe3ff,transparent:true,opacity:.6});
+add(B(2,.9,2.3,0x2f6fdb),-2,1.5,0);[-1.15,1.15].forEach(z=>add(B(2,.5,.1,0x1f4fa8),-2,2.1,z));add(B(.3,.3,2.4,0xcccccc),2.7,1.1,0);add(B(.3,.3,2.4,0xcccccc),-2.7,1.1,0);
+tp.lights=[-.8,.8].map(z=>add(new THREE.Mesh(new THREE.SphereGeometry(.22),new THREE.MeshLambertMaterial({color:0x555555})),2.65,1.6,z));
+tp.hood=new THREE.Group();tp.hood.position.set(.4,1.95,0);truck.add(tp.hood);add(B(2.2,.15,2.3,0x2f6fdb),1.1,0,0,tp.hood);
+tp.engine=add(B(1.1,.7,1,0x888888),1.4,1.5,0);add(B(.5,.5,.5,0xd33),0,.5,0,tp.engine);
+tp.battery=add(B(.5,.35,.35,0x222222),1.9,1.9,.7);add(B(.1,.1,.1,0xe33),.1,.22,.1,tp.battery);
+tp.fuel=add(B(.5,.7,.3,0xd62828),-2.9,1.5,.6);tp.tools=add(B(1,.4,.6,0xffc914),0,.2,3);add(B(.9,.1,.1,0x555),0,.3,0,tp.tools);
+tp.wheels=[[1.7,1.3],[1.7,-1.3],[-1.7,1.3],[-1.7,-1.3]].map(([x,z])=>{const w=new THREE.Group(),t=new THREE.Mesh(new THREE.CylinderGeometry(.6,.6,.45,16),mat(0x1a1a1a)),h=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.5,10),mat(0xcccccc));w.add(t,h);w.rotation.x=Math.PI/2;w.position.set(x,.6,z);truck.add(w);return w;});
+tp.key=add(new THREE.Mesh(new THREE.SphereGeometry(.1),mat(0xffd400)),.2,2.2,.9);}
 scene.add(truck);
+let lastStep=-1;function updateTruck(st){if(st===lastStep&&Math.abs(tp.hood.rotation.z-(st>=6?0:.9))<.01)return;lastStep=st;
+tp.tools.visible=st<6;tp.engine.visible=st>=2;tp.battery.visible=st>=3;tp.wheels[2].visible=st>=4;tp.fuel.visible=st>=5;tp.key.visible=st>=6;
+tp.lights.forEach(l=>{l.material.color.set(st>=6?0xfff3a0:0x555555);l.material.emissive=new THREE.Color(st>=6?0x998800:0);});}
 // sand particles (pooled, camera-following)
 const N = isMobile ? 500 : 1500, pg = new THREE.BufferGeometry(), pp = new Float32Array(N * 3);
 for (let i = 0; i < N * 3; i++) pp[i] = (Math.random() - .5) * 60; pg.setAttribute('position', new THREE.BufferAttribute(pp, 3));
@@ -142,7 +161,10 @@ let mt; function showMsg(t) { $('msg').textContent = t; clearTimeout(mt); mt = s
 // ---------- input ----------
 addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') act(); if (e.code === 'Tab') e.preventDefault(); });
 addEventListener('keyup', e => keys[e.code] = false);
-let drag = null; renderer.domElement.addEventListener('pointerdown', e => drag = { x: e.clientX, y: e.clientY, id: e.pointerId });
+addEventListener('contextmenu', e => e.preventDefault());
+const resetInput = () => { for (const k in keys) keys[k] = false; joy = { x: 0, y: 0 }; drag = null; run = false; };
+addEventListener('blur', resetInput); document.addEventListener('visibilitychange', resetInput); addEventListener('pointercancel', () => drag = null);
+let drag = null; renderer.domElement.addEventListener('pointerdown', e => e.button === 0 && (drag = { x: e.clientX, y: e.clientY, id: e.pointerId }));
 addEventListener('pointerup', () => drag = null);
 addEventListener('pointermove', e => { if (!drag || e.pointerId !== drag.id) return; yaw -= (e.clientX - drag.x) * .006; pitch = Math.max(.1, Math.min(1.1, pitch + (e.clientY - drag.y) * .004)); drag.x = e.clientX; drag.y = e.clientY; });
 const joyEl = $('joy'); let joyId = null;
@@ -185,13 +207,14 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
       av.position.x += (t[0] - av.position.x) * Math.min(1, dt * 10); av.position.z += (t[1] - av.position.z) * Math.min(1, dt * 10);
       let dr = t[2] - av.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); av.rotation.y += dr * Math.min(1, dt * 10); animate(av, t[3], G.t); }
     for (const id in items) { const it = items[id], tk = G.taken.includes(+id); it.m.visible = !tk; it.m.rotation.y += dt * 2; it.m.position.y = 1.2 + Math.sin(G.t * 3 + +id) * .25; }
+    updateTruck(G.step);tp.hood.rotation.z+=((G.step>=6?0:.9)-tp.hood.rotation.z)*Math.min(1,dt*4);
     // storm: sky, fog, particles, wind, overlay
     const s = G.storm; scene.background.copy(clearSky).lerp(stormSky, s); scene.fog.color.copy(scene.background); scene.fog.density = .004 + s * s * .05;
     sand.material.opacity = Math.min(.9, s * 1.2); const a = pg.attributes.position.array;
     for (let i = 0; i < N; i++) { a[i * 3] -= (8 + s * 40) * dt; a[i * 3 + 1] += Math.sin(G.t + i) * dt; if (a[i * 3] < -30) a[i * 3] = 30; }
     pg.attributes.position.needsUpdate = true; sand.position.set(m.x, m.y + 8, m.z); $('storm').style.opacity = s * .55;
     // camera
-    const cd = 9; cam.position.set(m.x + Math.sin(yaw) * Math.cos(pitch) * cd, 2 + Math.sin(pitch) * cd, m.z + Math.cos(yaw) * Math.cos(pitch) * cd); cam.lookAt(m.x, 1.6, m.z);
+    const cd = 9; cam.position.set(m.x + Math.sin(yaw) * Math.cos(pitch) * cd, 2 + Math.sin(pitch) * cd, m.z + Math.cos(yaw) * Math.cos(pitch) * cd); {const sh=G.storm*.15;cam.position.x+=(Math.random()-.5)*sh;cam.position.y+=(Math.random()-.5)*sh;}cam.lookAt(m.x, 1.6, m.z);
     // HUD
     const left = Math.max(0, Math.round((1 - s) * G.stormMs / 1000)), n = G.taken.length, np = Object.keys(G.avatars).length;
     const mission = G.step >= 6 ? (G.boarded < np ? 'Everyone get in the truck! (E near truck)' : 'Escaping…') : n < 6 ? 'Find truck parts' : STEP_TXT[G.step] + ' (E at truck)';
