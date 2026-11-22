@@ -90,6 +90,7 @@ io.on('connection', s => {
   s.on('board', () => { const r = s.room, p = r?.players[s.id];
     if (!p || r.phase !== 'play' || r.fixed.length < STEPS.length || d(p, TRUCK) > TRUCK_REACH) return;
     r.boarded[s.id] = true; checkStart(r); });
+  s.on('rtc', m => { const r = s.room; if (!r || !m || !r.players[m.to]) return; io.to(m.to).emit('rtc', { from: s.id, data: m.data }); }); // voice chat signalling
   s.on('drive_in', m => { const r = s.room; if (!r || r.phase !== 'drive' || r.driver !== s.id) return;
     r.drv.steer = clamp(+m?.steer || 0, -1, 1); r.drv.thr = clamp(+m?.thr || 0, -1, 1); });
   s.on('disconnect', () => {

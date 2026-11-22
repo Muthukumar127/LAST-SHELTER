@@ -14,7 +14,10 @@ canvas{display:block}
 button,input{font:700 20px Fredoka,sans-serif;border:4px solid var(--ink);border-radius:16px;padding:10px 20px;color:var(--ink)}
 button{background:var(--teal);color:#fff;box-shadow:0 5px 0 var(--ink);cursor:pointer}button:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink)}
 button.alt{background:var(--red)}input{background:#fff;text-align:center;width:190px;text-transform:uppercase}
-#name,#uname{text-transform:none}input{-webkit-user-select:text!important;user-select:text!important;-webkit-user-modify:read-write-plaintext-only;touch-action:auto!important;pointer-events:auto!important;position:relative;z-index:10;cursor:text}#crash{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(transparent 20%,#ff2a00bb);opacity:0}
+#name,#uname{text-transform:none}input{-webkit-user-select:text!important;user-select:text!important;-webkit-user-modify:read-write-plaintext-only;touch-action:auto!important;pointer-events:auto!important;position:relative;z-index:10;cursor:text}#micBtn{position:fixed;top:56px;right:10px;z-index:30;font-size:15px;padding:6px 14px;box-shadow:0 3px 0 var(--ink);background:#777}#micBtn.on{background:var(--teal)}#micBtn.talk{outline:4px solid #4cff7a}
+#toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:40;background:#3b1f0eee;color:#fff;font-weight:700;padding:8px 16px;border-radius:14px;display:none;max-width:90%;text-align:center}
+#inviteRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.slot.open{cursor:pointer;opacity:.85;border-style:dashed}#linv{font-weight:700;color:#0b6b62;display:none}
+#crash{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(transparent 20%,#ff2a00bb);opacity:0}
 #slots{display:grid;grid-template-columns:repeat(2,150px);gap:10px}
 .slot{border:4px solid var(--ink);border-radius:16px;background:#fff8;padding:10px;font-weight:700;min-height:48px}
 #hud{position:fixed;top:8px;left:8px;right:8px;z-index:3;display:none;pointer-events:none;font-weight:700;text-shadow:0 2px 0 #fff8}
@@ -27,13 +30,13 @@ button.alt{background:var(--red)}input{background:#fff;text-align:center;width:1
 #joy{position:absolute;left:24px;bottom:24px;width:130px;height:130px;border-radius:50%;background:#fff6;border:4px solid var(--ink);pointer-events:auto}
 #knob{position:absolute;left:35px;top:35px;width:60px;height:60px;border-radius:50%;background:var(--red);border:4px solid var(--ink)}
 </style></head><body>
-<div id="storm"></div><div id="crash"></div><div id="hud"></div><div id="msg"></div><div id="prompt"></div>
+<button id="micBtn" style="display:none" title="Voice chat (press M)">🎤 Mic off</button><div id="toast"></div><div id="storm"></div><div id="crash"></div><div id="hud"></div><div id="msg"></div><div id="prompt"></div>
 <div id="mob"><div id="joy"><div id="knob"></div></div>
 <button id="bAct" style="right:24px;bottom:110px">Use</button><button id="bRun" class="alt" style="right:100px;bottom:40px">Run</button>
 <button id="bDrop" class="alt" style="right:100px;bottom:110px">Drop</button><button id="bJump" style="right:24px;bottom:30px">Jump</button></div>
 
 <div class="panel" id="login"><h1>LAST SHELTER</h1>
-<p style="margin:0;font-weight:700">Create your username to enter the game</p>
+<div id="linv"></div><p style="margin:0;font-weight:700">Create your username to enter the game</p>
 <input id="uname" type="text" placeholder="Username" maxlength="12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="go">
 <button id="enter">Enter game</button><div id="lerr" style="color:#a01212;min-height:24px"></div></div>
 <div class="panel" id="menu" style="display:none"><h1>LAST SHELTER</h1>
@@ -43,6 +46,7 @@ button.alt{background:var(--red)}input{background:#fff;text-align:center;width:1
 <div><input id="code" type="text" placeholder="CODE" maxlength="6" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="go"> <button id="join" class="alt">Join room</button></div>
 <div id="err" style="color:#a01212;min-height:24px"></div></div>
 <div class="panel" id="lobby" style="display:none"><h1 style="font-size:48px">Room <span id="rc"></span></h1>
+<div id="inviteRow"><button id="invite">📨 Invite friends</button><button id="wa" class="alt">💬 WhatsApp</button></div>
 <div id="slots"></div><button id="startBtn">Start game</button><div id="wait">Waiting for the host…</div></div>
 <div class="panel" id="end" style="display:none"><h1 id="endT"></h1><button onclick="location.reload()">Play again</button></div>
 
@@ -61,10 +65,20 @@ const keys = {}; let joy = { x: 0, y: 0 }, yaw = 0, pitch = 0, run = false;
 // ---------- lobby ----------
 // username: create it first, then you can create / join rooms
 let myName = '';
+const invited = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); let usedInv = false;
+if (invited) { $('code').value = invited; $('linv').style.display = 'block'; $('linv').textContent = '📨 You were invited to room ' + invited + ' – create a username to join!'; }
+let tt; const toast = t => { $('toast').textContent = t; $('toast').style.display = 'block'; clearTimeout(tt); tt = setTimeout(() => $('toast').style.display = 'none', 3500); };
+const roomCode = () => $('rc').textContent, inviteURL = () => location.origin + location.pathname + '?room=' + roomCode(), inviteText = () => `Join my LAST SHELTER game! Room code: ${roomCode()}  ${inviteURL()}`;
+async function copyText(t) { try { await navigator.clipboard.writeText(t); } catch (e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (_) {} ta.remove(); } }
+async function invite() { if (isMobile && navigator.share) { try { await navigator.share({ title: 'LAST SHELTER', text: 'Join my LAST SHELTER game! Room code: ' + roomCode(), url: inviteURL() }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  await copyText(inviteText()); toast('✅ Invite link copied – send it to your friends!'); }
+$('invite').onclick = invite; $('wa').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(inviteText()), '_blank');
+$('slots').addEventListener('click', e => { if (e.target.closest('.open')) invite(); });
 try { $('uname').value = localStorage.getItem('ls_name') || ''; } catch (e) {}
-function enterGame() { socket.emit('setname', $('uname').value, r => { if (!r.ok) return $('lerr').textContent = r.err;
+function enterGame() { try { initAudio(); ac.resume?.(); } catch (e) {} socket.emit('setname', $('uname').value, r => { if (!r.ok) return $('lerr').textContent = r.err;
   myName = r.name; try { localStorage.setItem('ls_name', myName); } catch (e) {}
-  $('me').textContent = myName; $('lerr').textContent = ''; $('login').style.display = 'none'; $('menu').style.display = 'flex'; }); }
+  $('me').textContent = myName; $('lerr').textContent = ''; $('login').style.display = 'none'; $('menu').style.display = 'flex'; $('micBtn').style.display = '';
+  if (invited && !usedInv) { usedInv = true; $('code').value = invited; socket.emit('join', invited); history.replaceState(null, '', location.pathname); } }); }
 for (const id of ['uname', 'code']) { const el = $(id); for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'mousedown', 'touchstart']) el.addEventListener(t, e => e.stopPropagation());
   el.addEventListener('pointerdown', () => setTimeout(() => el.focus(), 0)); }
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').click(); });
@@ -80,12 +94,47 @@ socket.on('lobby', l => {
   host = l.host; $('menu').style.display = 'none'; if (phase === 'menu') { phase = 'lobby'; $('lobby').style.display = 'flex'; }
   $('rc').textContent = l.code;
   $('slots').innerHTML = [0,1,2,3].map(i => { const p = l.players[i];
-    return `<div class="slot" style="${p ? 'background:#' + COLORS[p.color].toString(16).padStart(6,'0') + ';color:#fff' : ''}">${p ? p.name + (p.id === host ? ' ★' : '') + (p.id === myId ? ' (you)' : '') : 'Open slot'}</div>`; }).join('');
+    return `<div class="slot${p ? '' : ' open'}" style="${p ? 'background:#' + COLORS[p.color].toString(16).padStart(6,'0') + ';color:#fff' : ''}">${p ? p.name + (p.id === host ? ' ★' : '') + (p.id === myId ? ' (you)' : '') : '➕ Invite'}</div>`; }).join('');
   $('startBtn').style.display = host === myId ? '' : 'none'; $('wait').style.display = host === myId ? 'none' : '';
   if (G) G.players && l.players.forEach(p => G.colors[p.id] = p.color);
   G && Object.keys(G.avatars).forEach(id => { if (!l.players.find(p => p.id === id)) { scene.remove(G.avatars[id]); delete G.avatars[id]; } });
-  window._lobby = l;
+  window._lobby = l; syncPeers(l.players);
 });
+
+// ---------- voice chat (mic) ----------
+const speaking = {}, peers = {}, lvl = {}, ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+let micStream = null, micOn = false; const micBtn = $('micBtn');
+const nameOf = id => (window._lobby?.players || []).find(p => p.id === id)?.name || 'Player';
+function watch(id, stream) { try { initAudio(); const an = ac.createAnalyser(); an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an); lvl[id] = { an, buf: new Uint8Array(an.frequencyBinCount) }; } catch (e) {} }
+setInterval(() => { for (const id in lvl) { const q = lvl[id]; q.an.getByteFrequencyData(q.buf); let t = 0; for (const v of q.buf) t += v; speaking[id] = t / q.buf.length > 14 && (id !== myId || micOn); }
+  micBtn.classList.toggle('talk', !!speaking[myId]); }, 120);
+function attachMic(P) { if (!micStream) return; const track = micStream.getAudioTracks()[0], tr = P.pc.getTransceivers().find(t => t.receiver.track && t.receiver.track.kind === 'audio');
+  if (tr) { if (tr.sender.track !== track) tr.sender.replaceTrack(track); if (tr.direction !== 'sendrecv') tr.direction = 'sendrecv'; } }
+function getPeer(id) { if (peers[id]) return peers[id];
+  const pc = new RTCPeerConnection(ICE), P = peers[id] = { pc, polite: myId > id, making: false, ignore: false, el: null };
+  pc.onicecandidate = e => e.candidate && socket.emit('rtc', { to: id, data: { c: e.candidate } });
+  pc.onnegotiationneeded = async () => { try { P.making = true; await pc.setLocalDescription(); socket.emit('rtc', { to: id, data: { d: pc.localDescription } }); } catch (e) {} finally { P.making = false; } };
+  pc.ontrack = e => { const st = new MediaStream([e.track]); if (!P.el) { P.el = new Audio(); P.el.autoplay = true; } P.el.srcObject = st; P.el.play().catch(() => {}); watch(id, st); };
+  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') try { pc.restartIce(); } catch (e) {} };
+  if (myId < id) pc.addTransceiver('audio', { direction: 'sendrecv' }); // the lower id opens the audio line, the other side answers
+  attachMic(P); return P; }
+function closePeer(id) { const P = peers[id]; if (!P) return; try { P.pc.close(); } catch (e) {} if (P.el) P.el.srcObject = null; delete peers[id]; delete lvl[id]; delete speaking[id]; }
+function syncPeers(pl) { if (!myId || !window.RTCPeerConnection) return; const ids = pl.map(p => p.id).filter(i => i !== myId); ids.forEach(getPeer); Object.keys(peers).forEach(id => { if (!ids.includes(id)) closePeer(id); }); }
+socket.on('rtc', async ({ from, data }) => { if (!window.RTCPeerConnection) return; const P = getPeer(from), pc = P.pc;
+  try { if (data.d) { const clash = data.d.type === 'offer' && (P.making || pc.signalingState !== 'stable'); P.ignore = !P.polite && clash; if (P.ignore) return;
+      await pc.setRemoteDescription(data.d);
+      if (data.d.type === 'offer') { attachMic(P); await pc.setLocalDescription(); socket.emit('rtc', { to: from, data: { d: pc.localDescription } }); } }
+    else if (data.c) { try { await pc.addIceCandidate(data.c); } catch (e) { if (!P.ignore) throw e; } } } catch (e) { console.warn('rtc', e); } });
+function updateMicUI() { micBtn.textContent = micOn ? '🎤 Mic ON (M)' : '🎤 Mic off (M)'; micBtn.classList.toggle('on', micOn); }
+async function toggleMic() { try { initAudio(); ac.resume?.(); } catch (e) {}
+  if (!micStream) { if (!navigator.mediaDevices?.getUserMedia) return toast('Mic needs a secure (https://) link');
+    try { micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); } catch (e) { return toast('Mic blocked – allow microphone permission in the browser'); }
+    watch(myId, micStream); micOn = true; Object.values(peers).forEach(attachMic); toast('🎤 Mic is ON – your teammates can hear you'); }
+  else { micOn = !micOn; toast(micOn ? '🎤 Mic is ON' : '🔇 Mic muted'); }
+  micStream.getAudioTracks().forEach(t => t.enabled = micOn); updateMicUI(); }
+micBtn.onclick = toggleMic; ['pointerdown', 'keydown'].forEach(t => micBtn.addEventListener(t, e => e.stopPropagation()));
+addEventListener('pointerdown', () => { if (ac && ac.state === 'suspended') ac.resume(); Object.values(peers).forEach(P => P.el && P.el.paused && P.el.play().catch(() => {})); }, { passive: true });
+updateMicUI();
 
 // ---------- scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile }); renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));
@@ -144,6 +193,22 @@ function makeChar(color) { const g = new THREE.Group(), sk = 0xffd9b0;
   g.userData.arms = [-1, 1].map(q => { const a = S(g, .27, 0xffffff, q * .6, 1, 0); const sl = new THREE.Mesh(new THREE.CylinderGeometry(.12, .14, .35, 8), mat(color)); sl.position.set(q * .5, 1.18, 0); sl.rotation.z = q * .6; g.add(sl); return a; });
   g.userData.feet = [-1, 1].map(q => { const f = new THREE.Group(); S(f, .3, 0xffffff, 0, 0, 0, 1, .55, 1.5); S(f, .2, color, 0, .13, -.08, 1, .6, 1.1); f.position.set(q * .22, .15, .08); g.add(f); return f; });
   g.userData.head = hd; g.traverse(o => o.castShadow = !isMobile); return g; }
+function drawTag(av) { const u = av.userData, key = u.name + '|' + u.host + '|' + u.talk; if (u.tagKey === key) return; u.tagKey = key;
+  const c = u.tag.material.map.image, x = c.getContext('2d'), label = (u.host ? '★ ' : '') + u.name + (u.talk ? ' 🔊' : ''); x.clearRect(0, 0, 512, 128); x.font = '700 54px Fredoka,system-ui,sans-serif';
+  const w = Math.min(496, x.measureText(label).width + 56); x.fillStyle = 'rgba(59,31,14,.85)'; x.strokeStyle = u.talk ? '#4cff7a' : '#fff'; x.lineWidth = 6; x.beginPath();
+  if (x.roundRect) x.roundRect((512 - w) / 2, 20, w, 88, 40); else x.rect((512 - w) / 2, 20, w, 88); x.fill(); x.stroke();
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(label, 256, 66, w - 28); u.tag.material.map.needsUpdate = true; }
+function addTag(av) { const c = document.createElement('canvas'); c.width = 512; c.height = 128; const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false })); sp.scale.set(3.2, .8, 1); sp.position.y = 3.1; sp.renderOrder = 1000; av.add(sp); av.userData.tag = sp; }
+function spawnAv(id) { const av = makeChar(COLORS[G.colors[id] ?? 0]); addTag(av); scene.add(av); G.avatars[id] = av; return av; }
+function updateAvatars() { for (const id in G.avatars) { if (id === myId) continue; const av = G.avatars[id], u = av.userData;
+    u.name = nameOf(id); u.host = id === host; u.talk = !!speaking[id]; drawTag(av);
+    const qi = G.ipos.findIndex(q => q[0] === 1 && q[3] === id), ht = qi >= 0 ? PARTS[qi] : null; // item this player is carrying
+    if (u.heldT !== ht) { if (u.heldM) av.remove(u.heldM); u.heldM = null; u.heldT = ht;
+      if (ht) { const hm = itemMesh(ht); hm.remove(hm.children[hm.children.length - 1]); hm.scale.setScalar(.65); hm.position.set(0, 1.2, .95); av.add(hm); u.heldM = hm; } }
+    u.arms.forEach(a => { if (u.heldM) { a.position.y = 1.15; a.position.z = .5; } else a.position.y = 1; });
+    if (u.heldM) u.heldM.rotation.y += .03; } }
+document.fonts?.ready.then(() => G && Object.values(G.avatars).forEach(a => a.userData.tagKey = null));
 function makeHands(color) { const g = new THREE.Group();
   [-1, 1].forEach(q => { const sl = new THREE.Mesh(new THREE.CylinderGeometry(.07, .09, .5, 10), mat(color)); sl.rotation.x = Math.PI / 2 - .2; sl.position.set(q * .32, -.38, -.45);
     const gl = new THREE.Mesh(new THREE.SphereGeometry(.13, 12, 10), mat(0xffffff)); gl.scale.set(1, .8, 1.2); gl.position.set(q * .3, -.3, -.75); g.add(sl, gl);
@@ -215,7 +280,7 @@ socket.on('start', s => {
 });
 socket.on('state', s => { if (!G) return; G.storm = s.storm; G.step = s.fixed.length; G.fixed = s.fixed; G.ipos = s.it; G.taken = s.it.map((q, i) => q[0] ? i : -1).filter(i => i >= 0); G.boarded = s.boarded;
   for (const id in s.p) { if (id === myId) continue;
-    if (!G.avatars[id]) { G.avatars[id] = makeChar(COLORS[G.colors[id] ?? 0]); scene.add(G.avatars[id]); }
+    if (!G.avatars[id]) spawnAv(id);
     G.target[id] = s.p[id]; } });
 socket.on('msg', showMsg);
 socket.on('end', r => { phase = 'end'; $('end').style.display = 'flex'; $('crash').style.opacity = 0;
@@ -224,7 +289,7 @@ let mt; function showMsg(t) { $('msg').textContent = t; clearTimeout(mt); mt = s
 
 // ---------- input ----------
 const typing = e => e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
-addEventListener('keydown', e => { if (typing(e)) return; keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') act(); if (e.code === 'KeyQ' && G) socket.emit('drop'); if (e.code === 'Tab') e.preventDefault(); });
+addEventListener('keydown', e => { if (typing(e)) return; keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') act(); if (e.code === 'KeyQ' && G) socket.emit('drop'); if (e.code === 'Tab') e.preventDefault(); if (e.code === 'KeyM') toggleMic(); });
 addEventListener('keyup', e => { if (!typing(e)) keys[e.code] = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (document.pointerLockElement) { yaw -= e.movementX * .0025; pitch = Math.max(-1.3, Math.min(1.3, pitch + e.movementY * .0025)); } });
@@ -354,12 +419,13 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
       m.x = Math.max(-90, Math.min(90, m.x + wx * spd * dt)); m.z = Math.max(-90, Math.min(90, m.z + wz * spd * dt)); m.ry = Math.atan2(wx, wz); collide(m); }
     m.vy -= 20 * dt; m.y = Math.max(0, m.y + m.vy * dt); if (m.y === 0) m.vy = 0;
     G.a = !moving ? 'idle' : sprint ? 'run' : 'walk';
-    if (!G.avatars[myId]) { G.avatars[myId] = makeChar(COLORS[G.colors[myId] ?? 0]); scene.add(G.avatars[myId]); }
+    if (!G.avatars[myId]) spawnAv(myId);
     const me = G.avatars[myId]; me.visible = false; if (!G.vm) { G.vm = makeHands(COLORS[G.colors[myId] ?? 0]); cam.add(G.vm); } G.vm.position.y = G.a === 'idle' ? Math.sin(G.t * 2) * .004 : Math.sin(G.t * (G.a === 'run' ? 14 : 8)) * .02; me.position.set(m.x, m.y, m.z); me.rotation.y = m.ry; animate(me, G.a, G.t);
     sendT += dt; if (sendT > .066) { sendT = 0; socket.emit('move', { x: m.x, z: m.z, ry: m.ry, a: G.a }); }
     for (const id in G.target) { const av = G.avatars[id], t = G.target[id]; if (!av) continue; // interpolation
       av.position.x += (t[0] - av.position.x) * Math.min(1, dt * 10); av.position.z += (t[1] - av.position.z) * Math.min(1, dt * 10);
       let dr = t[2] - av.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); av.rotation.y += dr * Math.min(1, dt * 10); animate(av, t[3], G.t); }
+    updateAvatars();
     for (const id in items) { const it = items[id], tk = G.taken.includes(+id); it.m.visible = !tk; const q = G.ipos[id]; if (q) { it.m.position.x = it.x = q[1]; it.m.position.z = it.z = q[2]; }
       const mt = q ? q[4] : it.mounted, ring = it.m.children[it.m.children.length - 1]; if (ring) ring.visible = !mt;
       if (mt) { it.m.rotation.y = wreckTh; it.m.position.y = it.y; } else { it.m.rotation.y += dt * 2; it.m.position.y = 1.2 + Math.sin(G.t * 3 + +id) * .25; } }
