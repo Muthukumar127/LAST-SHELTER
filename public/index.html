@@ -48,11 +48,11 @@ button.alt{background:var(--red)}input{background:#fff;text-align:center;width:1
 import * as THREE from 'three';
 const $ = id => document.getElementById(id), socket = io();
 const isMobile = /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent) || matchMedia('(pointer:coarse)').matches;
-const COLORS = [0xe4572e, 0x17a398, 0x6a4c93, 0xffc914], PARTS = ['tools','engine','battery','tyre','fuel','key'];
-const LABEL = { tools:'Repair tools', engine:'Engine', battery:'Battery', tyre:'Spare tyre', fuel:'Fuel can', key:'Car key' };
-const STEP_TXT = ['Fix the engine with tools','Install the engine','Install the battery','Fit the tyre','Fill the fuel tank','Start the engine'];
+const COLORS = [0xe4572e, 0x17a398, 0x6a4c93, 0xffc914], PARTS = ['tools','engine','battery','tyre','fuel','brake','handbrake','seats','windshield','door1','door2','door3','door4','key'], NP = 14;
+const LABEL = { tools:'Repair tools', engine:'Engine', battery:'Battery', tyre:'Spare tyre', fuel:'Fuel can', brake:'Brake disc', handbrake:'Handbrake', seats:'Seats', windshield:'Windshield', door1:'Front-left door', door2:'Front-right door', door3:'Rear-left door', door4:'Rear-right door', key:'Car key' };
+const STEP_TXT = PARTS.map(p => 'Install the ' + LABEL[p].toLowerCase());
 let myId, host, phase = 'menu', G = null;
-const keys = {}; let joy = { x: 0, y: 0 }, yaw = 0, pitch = .45, run = false;
+const keys = {}; let joy = { x: 0, y: 0 }, yaw = 0, pitch = 0, run = false;
 
 // ---------- lobby ----------
 $('create').onclick = () => socket.emit('create', $('name').value);
@@ -119,21 +119,43 @@ function makeChar(color) { const g = new THREE.Group(), b = mat(color);
 function animate(g, a, t) { const sp = a === 'run' ? 14 : 8, amp = a === 'idle' ? 0 : (a === 'run' ? .5 : .3);
   const s = Math.sin(t * sp) * amp; g.userData.feet[0].position.z = .08 + s; g.userData.feet[1].position.z = .08 - s;
   g.userData.arms[0].position.z = -s * .8; g.userData.arms[1].position.z = s * .8; g.userData.head.position.y = 1.75 + (a === 'idle' ? Math.sin(t * 2) * .02 : Math.abs(s) * .15); }
-// truck with removable/installable parts
-const truck=new THREE.Group(),tp={};{const add=(o,x,y,z,g=truck)=>{o.position.set(x,y,z);o.castShadow=!isMobile;g.add(o);return o;};const B=(w,h,d,c)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));
-add(B(5.2,.5,2.3,0x333333),0,.9,0);add(B(2.2,.9,2.3,0x2f6fdb),1.5,1.5,0);add(B(2.2,1.1,2.1,0x4a8cff),-.6,2.2,0);add(B(1.4,.5,1.9,0x9fe3ff),-.6,2.5,0).material=new THREE.MeshLambertMaterial({color:0x9fe3ff,transparent:true,opacity:.6});
-add(B(2,.9,2.3,0x2f6fdb),-2,1.5,0);[-1.15,1.15].forEach(z=>add(B(2,.5,.1,0x1f4fa8),-2,2.1,z));add(B(.3,.3,2.4,0xcccccc),2.7,1.1,0);add(B(.3,.3,2.4,0xcccccc),-2.7,1.1,0);
-tp.lights=[-.8,.8].map(z=>add(new THREE.Mesh(new THREE.SphereGeometry(.22),new THREE.MeshLambertMaterial({color:0x555555})),2.65,1.6,z));
-tp.hood=new THREE.Group();tp.hood.position.set(.4,1.95,0);truck.add(tp.hood);add(B(2.2,.15,2.3,0x2f6fdb),1.1,0,0,tp.hood);
-tp.engine=add(B(1.1,.7,1,0x888888),1.4,1.5,0);add(B(.5,.5,.5,0xd33),0,.5,0,tp.engine);
-tp.battery=add(B(.5,.35,.35,0x222222),1.9,1.9,.7);add(B(.1,.1,.1,0xe33),.1,.22,.1,tp.battery);
-tp.fuel=add(B(.5,.7,.3,0xd62828),-2.9,1.5,.6);tp.tools=add(B(1,.4,.6,0xffc914),0,.2,3);add(B(.9,.1,.1,0x555),0,.3,0,tp.tools);
-tp.wheels=[[1.7,1.3],[1.7,-1.3],[-1.7,1.3],[-1.7,-1.3]].map(([x,z])=>{const w=new THREE.Group(),t=new THREE.Mesh(new THREE.CylinderGeometry(.6,.6,.45,16),mat(0x1a1a1a)),h=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.5,10),mat(0xcccccc));w.add(t,h);w.rotation.x=Math.PI/2;w.position.set(x,.6,z);truck.add(w);return w;});
-tp.key=add(new THREE.Mesh(new THREE.SphereGeometry(.1),mat(0xffd400)),.2,2.2,.9);}
+function keyModel(sc=1){const g=new THREE.Group(),ch=new THREE.MeshLambertMaterial({color:0xd0d4d8,emissive:0x333333}),bx=(w,h,d,m,x,y)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,0);g.add(o);};
+bx(.5,.8,.14,mat(0x1b1b1b),0,.4);bx(.18,.12,.16,mat(0xcc2222),0,.55);const r=new THREE.Mesh(new THREE.TorusGeometry(.08,.025,8,12),ch);r.position.y=.88;g.add(r);bx(.14,.9,.04,ch,0,-.45);
+for(let i=0;i<5;i++)bx(.05+i%2*.05,.08,.04,ch,.09,-.2-i*.14);g.scale.setScalar(sc);return g;}
+function itemMesh(type){const g=new THREE.Group(),b=(w,h,d,c,x=0,y=0,z=0)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c));m.position.set(x,y,z);g.add(m);return m;};
+if(type==='key')g.add(keyModel(.9));else if(type==='tools'){b(1,.4,.6,0xffc914);b(.8,.06,.1,0x555555,0,.25,0);}
+else if(type==='engine'){b(.9,.6,.7,0x777777);b(.6,.25,.4,0xcc3333,0,.4,0);}else if(type==='battery'){b(.7,.45,.4,0x222222);b(.1,.1,.1,0xee3333,-.2,.28,0);b(.1,.1,.1,0x333333,.2,.28,0);}
+else if(type==='tyre')g.add(new THREE.Mesh(new THREE.TorusGeometry(.4,.18,10,18),mat(0x1a1a1a)));else if(type==='fuel'){b(.5,.7,.25,0xd62828);b(.2,.1,.1,0x333333,.1,.4,0);}
+else if(type==='brake'){const c=new THREE.Mesh(new THREE.CylinderGeometry(.4,.4,.08,16),mat(0xaaaaaa));c.rotation.x=Math.PI/2;g.add(c);b(.2,.25,.15,0xd62828,.35,0,0);}
+else if(type==='handbrake'){b(.1,.8,.1,0x111111);b(.25,.12,.12,0xcc2222,0,.45,0);}else if(type==='seats'){b(.7,.2,.7,0x6a4c93);b(.15,.8,.7,0x6a4c93,-.3,.5,0);}
+else if(type==='windshield')b(.05,.9,1.3,0x9fe3ff);else if(type.startsWith('door')){b(1,.9,.1,0x2f6fdb);b(.8,.3,.05,0x9fe3ff,0,.25,.06);}else g.add(new THREE.Mesh(new THREE.SphereGeometry(.4),mat(0xffd400)));
+const ring=new THREE.Mesh(new THREE.TorusGeometry(.8,.05,6,20),new THREE.MeshBasicMaterial({color:0xffee66}));ring.rotation.x=Math.PI/2;ring.position.y=-.9;g.add(ring);return g;}
+// truck: broken until repaired, every part installs separately
+const truck=new THREE.Group(),tp={};
+{const B=(w,h,d,c,o)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),o||mat(c));m.castShadow=!isMobile;return m;};
+const put=(o,x,y,z,g=truck)=>{o.position.set(x,y,z);g.add(o);return o;};
+const glass=()=>new THREE.MeshLambertMaterial({color:0x9fe3ff,transparent:true,opacity:.45}),BLUE=0x2f6fdb,RUST=0x8a4b2a;
+put(B(5.4,.4,2.1,0x2b2b2b),0,.95,0);put(B(2.3,.9,2.2,BLUE),1.55,1.5,0);put(B(.15,.5,2,0x333333),2.75,1.2,0);
+put(B(2,.2,2.1,RUST),-2,1.2,0);[-1,1].forEach(q=>put(B(2,.8,.1,BLUE),-2,1.7,q*1.05));put(B(.1,.8,2.1,BLUE),-3,1.7,0);put(B(.1,.8,2.1,BLUE),-1,1.7,0);
+put(B(2.6,.1,2.1,0x444444),-.6,1.25,0);[[.7,1],[.7,-1],[-1.9,1],[-1.9,-1]].forEach(([x,z])=>put(B(.12,1.5,.12,0x333333),x,2.05,z));put(B(2.8,.12,2.2,BLUE),-.6,2.85,0);put(B(.5,.45,2,0x222222),.45,1.9,0);
+const sw=put(new THREE.Mesh(new THREE.TorusGeometry(.22,.04,8,16),mat(0x111111)),.15,2.1,.5);sw.rotation.y=Math.PI/2-.4;
+tp.hood=new THREE.Group();tp.hood.position.set(.4,1.95,0);truck.add(tp.hood);put(B(2.2,.12,2.2,BLUE),1.1,0,0,tp.hood);
+tp.lights=[-.8,.8].map(z=>put(new THREE.Mesh(new THREE.SphereGeometry(.22),new THREE.MeshLambertMaterial({color:0x555555})),2.7,1.6,z));
+tp.engine=new THREE.Group();put(B(1.1,.6,.9,0x777777),0,0,0,tp.engine);put(B(.7,.3,.5,0xcc3333),0,.45,0,tp.engine);[-.3,0,.3].forEach(x=>put(new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.4,8),mat(0xbbbbbb)),x,.2,.5,tp.engine));put(tp.engine,1.5,1.7,0);
+tp.battery=new THREE.Group();put(B(.5,.35,.3,0x222222),0,0,0,tp.battery);put(B(.08,.08,.08,0xee3333),-.15,.22,0,tp.battery);put(B(.08,.08,.08,0x333333),.15,.22,0,tp.battery);put(tp.battery,2.05,1.95,.7);
+tp.fuel=new THREE.Group();put(B(.3,.8,.7,0xd62828),0,0,0,tp.fuel);put(tp.fuel,-1.05,1.7,.75);
+tp.tools=new THREE.Group();put(B(1,.35,.55,0xffc914),0,0,0,tp.tools);put(B(.9,.06,.1,0x555555),0,.2,0,tp.tools);put(tp.tools,0,.25,3.2);
+tp.wheels=[[1.7,1.3],[1.7,-1.3],[-1.7,1.3],[-1.7,-1.3]].map(([x,z])=>{const w=new THREE.Group();w.add(new THREE.Mesh(new THREE.CylinderGeometry(.6,.6,.45,18),mat(0x1a1a1a)),new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.5,10),mat(0xcccccc)));w.rotation.x=Math.PI/2;w.position.set(x,.6,z);truck.add(w);return w;});
+tp.brake=new THREE.Group();put(new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.06,16),mat(0xaaaaaa)),0,0,0,tp.brake);put(B(.2,.2,.1,0xd62828),.3,0,0,tp.brake);tp.brake.rotation.x=Math.PI/2;put(tp.brake,1.7,.6,1.02);
+tp.handbrake=put(B(.08,.5,.08,0x111111),-.1,1.55,0);tp.handbrake.rotation.z=.3;
+tp.seats=new THREE.Group();[[-.2,.5],[-.2,-.5],[-1.4,.5],[-1.4,-.5]].forEach(([x,z])=>{put(B(.6,.2,.6,0x6a4c93),x,1.45,z,tp.seats);put(B(.12,.75,.6,0x6a4c93),x-.3,1.85,z,tp.seats);});truck.add(tp.seats);
+tp.windshield=put(B(.05,.9,2,0,glass()),.75,2.4,0);tp.windshield.rotation.z=.35;
+tp.doors=[[.1,1.1],[.1,-1.1],[-1.3,1.1],[-1.3,-1.1]].map(([x,z])=>{const d=new THREE.Group();put(B(1.1,1,.08,BLUE),0,0,0,d);put(B(1,.35,.04,0,glass()),0,.35,z>0?.05:-.05,d);put(B(.15,.05,.06,0xdddddd),.35,0,0,d);return put(d,x,2.0,z);});
+tp.key=keyModel(.28);tp.key.position.set(.35,1.95,.15);truck.add(tp.key);}
 scene.add(truck);
-let lastStep=-1;function updateTruck(st){if(st===lastStep&&Math.abs(tp.hood.rotation.z-(st>=6?0:.9))<.01)return;lastStep=st;
-tp.tools.visible=st<6;tp.engine.visible=st>=2;tp.battery.visible=st>=3;tp.wheels[2].visible=st>=4;tp.fuel.visible=st>=5;tp.key.visible=st>=6;
-tp.lights.forEach(l=>{l.material.color.set(st>=6?0xfff3a0:0x555555);l.material.emissive=new THREE.Color(st>=6?0x998800:0);});}
+let lastStep=-1;function updateTruck(st){if(st===lastStep)return;lastStep=st;const on=t=>st>PARTS.indexOf(t);
+tp.engine.visible=on('engine');tp.battery.visible=on('battery');tp.wheels[2].visible=on('tyre');tp.fuel.visible=on('fuel');tp.brake.visible=on('brake');tp.handbrake.visible=on('handbrake');tp.seats.visible=on('seats');tp.windshield.visible=on('windshield');tp.doors.forEach((d,i)=>d.visible=on('door'+(i+1)));tp.key.visible=on('key');
+tp.lights.forEach(l=>{l.material.color.set(st>=NP?0xfff3a0:0x555555);l.material.emissive=new THREE.Color(st>=NP?0x998800:0);});}
 // sand particles (pooled, camera-following)
 const N = isMobile ? 500 : 1500, pg = new THREE.BufferGeometry(), pp = new Float32Array(N * 3);
 for (let i = 0; i < N * 3; i++) pp[i] = (Math.random() - .5) * 60; pg.setAttribute('position', new THREE.BufferAttribute(pp, 3));
@@ -146,7 +168,7 @@ socket.on('start', s => {
   G = { avatars: {}, target: {}, colors: {}, me: { x: -2, z: 0, ry: 0, vy: 0, y: 0 }, truck: s.truck, storm: 0, step: 0, taken: [], boarded: 0, t: 0, a: 'idle', stormMs: s.stormMs };
   (window._lobby?.players || []).forEach(p => G.colors[p.id] = p.color);
   truck.position.set(s.truck.x, 0, s.truck.z); truck.rotation.y = .5;
-  s.items.forEach(it => { const m = new THREE.Mesh(new THREE.OctahedronGeometry(.6), new THREE.MeshLambertMaterial({ color: 0xffd400, emissive: 0x886600 })); m.position.set(it.x, 1.2, it.z); scene.add(m); items[it.id] = { m, ...it }; });
+  s.items.forEach(it => { const m = itemMesh(it.type); m.position.set(it.x, 1.2, it.z); scene.add(m); items[it.id] = { m, ...it }; });
   document.exitPointerLock; showMsg('📻 EMERGENCY: sandstorm approaching! Find truck parts and repair the truck at the road!');
   initAudio(); radioBeep();
 });
@@ -162,11 +184,12 @@ let mt; function showMsg(t) { $('msg').textContent = t; clearTimeout(mt); mt = s
 addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') act(); if (e.code === 'Tab') e.preventDefault(); });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('mousemove', e => { if (document.pointerLockElement) { yaw -= e.movementX * .0025; pitch = Math.max(-1.3, Math.min(1.3, pitch + e.movementY * .0025)); } });
 const resetInput = () => { for (const k in keys) keys[k] = false; joy = { x: 0, y: 0 }; drag = null; run = false; };
 addEventListener('blur', resetInput); document.addEventListener('visibilitychange', resetInput); addEventListener('pointercancel', () => drag = null);
-let drag = null; renderer.domElement.addEventListener('pointerdown', e => e.button === 0 && (drag = { x: e.clientX, y: e.clientY, id: e.pointerId }));
+let drag = null; renderer.domElement.addEventListener('pointerdown', e => e.button === 0 && (!isMobile && phase === 'play' && renderer.domElement.requestPointerLock?.(), drag = { x: e.clientX, y: e.clientY, id: e.pointerId }));
 addEventListener('pointerup', () => drag = null);
-addEventListener('pointermove', e => { if (!drag || e.pointerId !== drag.id) return; yaw -= (e.clientX - drag.x) * .006; pitch = Math.max(.1, Math.min(1.1, pitch + (e.clientY - drag.y) * .004)); drag.x = e.clientX; drag.y = e.clientY; });
+addEventListener('pointermove', e => { if (document.pointerLockElement || !drag || e.pointerId !== drag.id) return; yaw -= (e.clientX - drag.x) * .006; pitch = Math.max(-1.3, Math.min(1.3, pitch + (e.clientY - drag.y) * .004)); drag.x = e.clientX; drag.y = e.clientY; });
 const joyEl = $('joy'); let joyId = null;
 const joyMove = e => { const r = joyEl.getBoundingClientRect(); let x = (e.clientX - r.left - 65) / 50, y = (e.clientY - r.top - 65) / 50, l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; } joy = { x, y }; $('knob').style.transform = `translate(${x * 35}px,${y * 35}px)`; };
 joyEl.addEventListener('pointerdown', e => { joyId = e.pointerId; joyEl.setPointerCapture(e.pointerId); joyMove(e); e.stopPropagation(); });
@@ -180,7 +203,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 function nearestItem() { let best = null, bd = 4.5; for (const id in items) { if (G.taken.includes(+id)) continue; const d = dist(G.me, items[id]); if (d < bd) { bd = d; best = +id; } } return best; }
 function act() { if (!G || phase !== 'play') return; const n = nearestItem();
   if (n !== null) { socket.emit('pickup', n); beep(660, .1); return; }
-  if (dist(G.me, G.truck) < 8) { if (G.step < 6) { socket.emit('repair'); beep(220, .15, 'square'); } else { socket.emit('board'); beep(440, .2); } } }
+  if (dist(G.me, G.truck) < 8) { if (G.step < NP) { socket.emit('repair'); beep(220, .15, 'square'); } else { socket.emit('board'); beep(440, .2); } } }
 
 // ---------- audio (procedural Web Audio) ----------
 let ac; function initAudio() { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); }
@@ -201,7 +224,7 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
     m.vy -= 20 * dt; m.y = Math.max(0, m.y + m.vy * dt); if (m.y === 0) m.vy = 0;
     G.a = !moving ? 'idle' : sprint ? 'run' : 'walk';
     if (!G.avatars[myId]) { G.avatars[myId] = makeChar(COLORS[G.colors[myId] ?? 0]); scene.add(G.avatars[myId]); }
-    const me = G.avatars[myId]; me.position.set(m.x, m.y, m.z); me.rotation.y = m.ry; animate(me, G.a, G.t);
+    const me = G.avatars[myId]; me.visible = false; me.position.set(m.x, m.y, m.z); me.rotation.y = m.ry; animate(me, G.a, G.t);
     sendT += dt; if (sendT > .066) { sendT = 0; socket.emit('move', { x: m.x, z: m.z, ry: m.ry, a: G.a }); }
     for (const id in G.target) { const av = G.avatars[id], t = G.target[id]; if (!av) continue; // interpolation
       av.position.x += (t[0] - av.position.x) * Math.min(1, dt * 10); av.position.z += (t[1] - av.position.z) * Math.min(1, dt * 10);
@@ -214,13 +237,13 @@ function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now 
     for (let i = 0; i < N; i++) { a[i * 3] -= (8 + s * 40) * dt; a[i * 3 + 1] += Math.sin(G.t + i) * dt; if (a[i * 3] < -30) a[i * 3] = 30; }
     pg.attributes.position.needsUpdate = true; sand.position.set(m.x, m.y + 8, m.z); $('storm').style.opacity = s * .55;
     // camera
-    const cd = 9; cam.position.set(m.x + Math.sin(yaw) * Math.cos(pitch) * cd, 2 + Math.sin(pitch) * cd, m.z + Math.cos(yaw) * Math.cos(pitch) * cd); {const sh=G.storm*.15;cam.position.x+=(Math.random()-.5)*sh;cam.position.y+=(Math.random()-.5)*sh;}cam.lookAt(m.x, 1.6, m.z);
+    cam.rotation.order = 'YXZ'; cam.position.set(m.x, m.y + 1.65, m.z); cam.rotation.set(-pitch, yaw, 0); { const sh = G.storm * .06; cam.position.x += (Math.random() - .5) * sh; cam.position.y += (Math.random() - .5) * sh; }
     // HUD
     const left = Math.max(0, Math.round((1 - s) * G.stormMs / 1000)), n = G.taken.length, np = Object.keys(G.avatars).length;
-    const mission = G.step >= 6 ? (G.boarded < np ? 'Everyone get in the truck! (E near truck)' : 'Escaping…') : n < 6 ? 'Find truck parts' : STEP_TXT[G.step] + ' (E at truck)';
-    $('hud').innerHTML = `<span class="box">🎯 ${mission}</span><span class="box">🔧 ${n}/6 parts · repair ${G.step}/6</span><span class="box">🌪 Storm in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span><span class="box">👥 ${np} · 🚚 ${G.boarded} aboard</span><br>` +
+    const mission = G.step >= NP ? (G.boarded < np ? 'Everyone get in the truck! (E near truck)' : 'Escaping…') : n < NP ? 'Find truck parts' : STEP_TXT[G.step] + ' (E at truck)';
+    $('hud').innerHTML = `<span class="box">🎯 ${mission}</span><span class="box">🔧 ${n}/${NP} parts · repair ${G.step}/${NP}</span><span class="box">🌪 Storm in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span><span class="box">👥 ${np} · 🚚 ${G.boarded} aboard</span><br>` +
       '<span class="box" style="font-size:14px">' + PARTS.map(p => (items.length, G.taken.includes(PARTS.indexOf(p)) ? '✅' : '⬜') + LABEL[p]).join(' ') + '</span>';
-    const ni = nearestItem(); $('prompt').textContent = ni !== null ? `[E] Pick up ${LABEL[items[ni].type]}` : dist(m, G.truck) < 8 ? (G.step < 6 ? `[E] Repair: ${STEP_TXT[G.step]}` : '[E] Get in the truck') : '';
+    const ni = nearestItem(); $('prompt').textContent = ni !== null ? `[E] Pick up ${LABEL[items[ni].type]}` : dist(m, G.truck) < 8 ? (G.step < NP ? `[E] Repair: ${STEP_TXT[G.step]}` : '[E] Get in the truck') : '';
   } else { cam.position.set(Math.sin(now / 4000) * 25, 10, Math.cos(now / 4000) * 25); cam.lookAt(0, 2, 0); }
   renderer.render(scene, cam); }
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); });

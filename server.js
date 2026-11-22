@@ -3,7 +3,7 @@ const express = require('express'), http = require('http'), { Server } = require
 const app = express(); app.use(express.static('public'));
 const srv = http.createServer(app), io = new Server(srv);
 const rooms = {};
-const STEPS = ['tools', 'engine', 'battery', 'tyre', 'fuel', 'key']; // repair order
+const STEPS = ['tools', 'engine', 'battery', 'tyre', 'fuel', 'brake', 'handbrake', 'seats', 'windshield', 'door1', 'door2', 'door3', 'door4', 'key']; // repair order
 const TRUCK = { x: 30, z: -25 }, STORM_MS = 240000, REACH = 4.5, TRUCK_REACH = 8;
 const d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const code = () => { let c; do c = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random() * 32 | 0]).join(''); while (rooms[c]); return c; };
@@ -26,7 +26,7 @@ io.on('connection', s => {
   });
   s.on('start', () => {
     const r = s.room; if (!r || r.host !== s.id || r.phase !== 'lobby') return;
-    r.items = STEPS.map((type, id) => { const a = id / 6 * Math.PI * 2 + 0.4, R = 25 + Math.random() * 25;
+    r.items = STEPS.map((type, id) => { const a = id / STEPS.length * Math.PI * 2 + 0.4, R = 22 + Math.random() * 40;
       return { id, type, x: Math.cos(a) * R, z: Math.sin(a) * R, taken: false }; });
     r.phase = 'play'; r.t0 = Date.now();
     Object.values(r.players).forEach((p, i) => { p.x = -2 + i * 1.5; p.z = 0; });
@@ -38,11 +38,11 @@ io.on('connection', s => {
     if (!p || r.phase !== 'play' || !it || it.taken || d(p, it) > REACH) return;
     it.taken = true; io.to(r.code).emit('msg', `${p.name} found the ${it.type}!`); });
   s.on('repair', () => { const r = s.room, p = r?.players[s.id];
-    if (!p || r.phase !== 'play' || r.step >= 6 || d(p, TRUCK) > TRUCK_REACH) return;
+    if (!p || r.phase !== 'play' || r.step >= STEPS.length || d(p, TRUCK) > TRUCK_REACH) return;
     const need = STEPS[r.step]; if (!r.items.find(i => i.type === need).taken) return s.emit('msg', `Still missing: ${need}`);
-    r.step++; io.to(r.code).emit('msg', `${p.name} fixed the ${need} (${r.step}/6)`); });
+    r.step++; io.to(r.code).emit('msg', `${p.name} fixed the ${need} (${r.step}/${STEPS.length})`); });
   s.on('board', () => { const r = s.room, p = r?.players[s.id];
-    if (!p || r.phase !== 'play' || r.step < 6 || d(p, TRUCK) > TRUCK_REACH) return;
+    if (!p || r.phase !== 'play' || r.step < STEPS.length || d(p, TRUCK) > TRUCK_REACH) return;
     r.boarded[s.id] = true; checkWin(r); });
   s.on('disconnect', () => { const r = s.room; if (!r) return; delete r.players[s.id]; delete r.boarded[s.id];
     const ids = Object.keys(r.players); if (!ids.length) return void delete rooms[r.code];
