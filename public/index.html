@@ -65,7 +65,7 @@ try { $('uname').value = localStorage.getItem('ls_name') || ''; } catch (e) {}
 function enterGame() { socket.emit('setname', $('uname').value, r => { if (!r.ok) return $('lerr').textContent = r.err;
   myName = r.name; try { localStorage.setItem('ls_name', myName); } catch (e) {}
   $('me').textContent = myName; $('lerr').textContent = ''; $('login').style.display = 'none'; $('menu').style.display = 'flex'; }); }
-$('enter').onclick = enterGame; $('uname').onkeydown = e => e.key === 'Enter' && enterGame();
+$('enter').onclick = enterGame; $('uname').addEventListener('keydown', e => { if (e.key === 'Enter') enterGame(); });
 $('chg').onclick = () => { $('menu').style.display = 'none'; $('login').style.display = 'flex'; };
 $('create').onclick = () => socket.emit('create');
 $('join').onclick = () => socket.emit('join', $('code').value);
