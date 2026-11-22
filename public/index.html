@@ -5,7 +5,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
 <style>
 :root{--sand:#f6c667;--ink:#3b1f0e;--red:#e4572e;--teal:#17a398}
-*{box-sizing:border-box;touch-action:none;user-select:none}
+*{box-sizing:border-box}*:not(input){touch-action:none;-webkit-user-select:none;user-select:none}
 body{margin:0;overflow:hidden;font-family:Fredoka,system-ui,sans-serif;color:var(--ink);background:#f3b562}
 canvas{display:block}
 .panel{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
@@ -14,7 +14,7 @@ canvas{display:block}
 button,input{font:700 20px Fredoka,sans-serif;border:4px solid var(--ink);border-radius:16px;padding:10px 20px;color:var(--ink)}
 button{background:var(--teal);color:#fff;box-shadow:0 5px 0 var(--ink);cursor:pointer}button:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink)}
 button.alt{background:var(--red)}input{background:#fff;text-align:center;width:190px;text-transform:uppercase}
-#name,#uname{text-transform:none}input{-webkit-user-select:text;user-select:text}#crash{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(transparent 20%,#ff2a00bb);opacity:0}
+#name,#uname{text-transform:none}input{-webkit-user-select:text!important;user-select:text!important;-webkit-user-modify:read-write-plaintext-only;touch-action:auto!important;pointer-events:auto!important;position:relative;z-index:10;cursor:text}#crash{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(transparent 20%,#ff2a00bb);opacity:0}
 #slots{display:grid;grid-template-columns:repeat(2,150px);gap:10px}
 .slot{border:4px solid var(--ink);border-radius:16px;background:#fff8;padding:10px;font-weight:700;min-height:48px}
 #hud{position:fixed;top:8px;left:8px;right:8px;z-index:3;display:none;pointer-events:none;font-weight:700;text-shadow:0 2px 0 #fff8}
@@ -34,13 +34,13 @@ button.alt{background:var(--red)}input{background:#fff;text-align:center;width:1
 
 <div class="panel" id="login"><h1>LAST SHELTER</h1>
 <p style="margin:0;font-weight:700">Create your username to enter the game</p>
-<input id="uname" placeholder="Username" maxlength="12" autocomplete="off">
+<input id="uname" type="text" placeholder="Username" maxlength="12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="go">
 <button id="enter">Enter game</button><div id="lerr" style="color:#a01212;min-height:24px"></div></div>
 <div class="panel" id="menu" style="display:none"><h1>LAST SHELTER</h1>
 <p style="margin:0;font-weight:700">A sandstorm is coming. Fix the truck. Escape together.</p>
 <div style="font-weight:700">Playing as <b id="me"></b> <button class="alt" id="chg" style="font-size:14px;padding:4px 12px;box-shadow:0 3px 0 var(--ink)">change</button></div>
 <button id="create">Create room</button>
-<div><input id="code" placeholder="CODE" maxlength="6"> <button id="join" class="alt">Join room</button></div>
+<div><input id="code" type="text" placeholder="CODE" maxlength="6" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="go"> <button id="join" class="alt">Join room</button></div>
 <div id="err" style="color:#a01212;min-height:24px"></div></div>
 <div class="panel" id="lobby" style="display:none"><h1 style="font-size:48px">Room <span id="rc"></span></h1>
 <div id="slots"></div><button id="startBtn">Start game</button><div id="wait">Waiting for the host…</div></div>
@@ -65,6 +65,10 @@ try { $('uname').value = localStorage.getItem('ls_name') || ''; } catch (e) {}
 function enterGame() { socket.emit('setname', $('uname').value, r => { if (!r.ok) return $('lerr').textContent = r.err;
   myName = r.name; try { localStorage.setItem('ls_name', myName); } catch (e) {}
   $('me').textContent = myName; $('lerr').textContent = ''; $('login').style.display = 'none'; $('menu').style.display = 'flex'; }); }
+for (const id of ['uname', 'code']) { const el = $(id); for (const t of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'mousedown', 'touchstart']) el.addEventListener(t, e => e.stopPropagation());
+  el.addEventListener('pointerdown', () => setTimeout(() => el.focus(), 0)); }
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('join').click(); });
+setTimeout(() => { try { $('uname').focus(); } catch (e) {} }, 100);
 $('enter').onclick = enterGame; $('uname').addEventListener('keydown', e => { if (e.key === 'Enter') enterGame(); });
 $('chg').onclick = () => { $('menu').style.display = 'none'; $('login').style.display = 'flex'; };
 $('create').onclick = () => socket.emit('create');
@@ -219,8 +223,9 @@ socket.on('end', r => { phase = 'end'; $('end').style.display = 'flex'; $('crash
 let mt; function showMsg(t) { $('msg').textContent = t; clearTimeout(mt); mt = setTimeout(() => $('msg').textContent = '', 5000); }
 
 // ---------- input ----------
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') act(); if (e.code === 'KeyQ' && G) socket.emit('drop'); if (e.code === 'Tab') e.preventDefault(); });
-addEventListener('keyup', e => keys[e.code] = false);
+const typing = e => e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+addEventListener('keydown', e => { if (typing(e)) return; keys[e.code] = true; if (e.code === 'KeyE' || e.code === 'KeyF') act(); if (e.code === 'KeyQ' && G) socket.emit('drop'); if (e.code === 'Tab') e.preventDefault(); });
+addEventListener('keyup', e => { if (!typing(e)) keys[e.code] = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (document.pointerLockElement) { yaw -= e.movementX * .0025; pitch = Math.max(-1.3, Math.min(1.3, pitch + e.movementY * .0025)); } });
 const resetInput = () => { for (const k in keys) keys[k] = false; joy = { x: 0, y: 0 }; drag = null; run = false; };
@@ -237,7 +242,7 @@ $('bAct').onpointerdown = e => { e.stopPropagation(); act(); }; $('bRun').onpoin
 $('bDrop').onpointerdown = e => { e.stopPropagation(); socket.emit('drop'); };
 $('bJump').onpointerdown = e => { e.stopPropagation(); jump(); };
 const jump = () => { if (G && G.me.y === 0) G.me.vy = 7; };
-addEventListener('keydown', e => e.code === 'Space' && jump());
+addEventListener('keydown', e => { if (!typing(e) && e.code === 'Space') jump(); });
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 function nearestItem() { let best = null, bd = 4.5; for (const id in items) { if (G.taken.includes(+id)) continue; const d = dist(G.me, items[id]); if (d < bd) { bd = d; best = +id; } } return best; }
 const heldId = () => (G.ipos || []).findIndex(q => q[0] === 1 && q[3] === myId);
